@@ -60,6 +60,14 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   crosses the book, applies `slippageBps`/`takerFeeBps`, enforces risk limits
   (`maxPositionUsd`, `maxExposureUsd`), then calls `portfolio.applyFill`.
 
+- **LiveExecutor** (`src/engine/liveExecutor.js`) — the **real-money** path, same
+  `async execute(signal, market)` interface as the paper executor. Off unless
+  `PM_LIVE_TRADING=true` with a wallet key. `bot.init()` tries to arm it and, on any
+  failure, falls back to paper (safe default). It lazy-loads the optional deps
+  (`@polymarket/clob-client` + **ethers v5** — v6 is incompatible, see below),
+  derives CLOB API creds from the signer, and submits FOK marketable orders, then
+  mirrors the fill into the local portfolio for the dashboard.
+
 - **Portfolio** (`src/engine/portfolio.js`) — the virtual account: cash, positions
   keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`.
 
@@ -79,8 +87,16 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   shorting YES) — see `momentum.js`.
 - **The snapshot is the API contract.** When you add a field the UI needs, add it to
   `bot.snapshot()`; the frontend reads only from there.
-- **Keep it dependency-free.** Prefer Node built-ins and SSE over adding packages or
-  a WebSocket library; the "runs anywhere with no install" property is intentional.
+- **Keep the paper path dependency-free.** Prefer Node built-ins and SSE over adding
+  packages; the "runs anywhere with no install" property is intentional. The only
+  packages are `optionalDependencies` for live trading, lazy-loaded so a missing
+  install never breaks paper mode.
+- **ethers v5, not v6.** `@polymarket/clob-client` detects ethers signers via
+  `_signTypedData` (v5). Ethers v6 renamed it to `signTypedData`, which the client
+  misreads as a viem wallet and rejects ("wallet client is missing account address").
+- **Live execution is async and gated.** The bot's execute path (`_run`, `_onMarkets`,
+  `manualOrder`, `flatten`) is `await`-based so paper (sync) and live (async) share it.
+  Live mode never auto-starts; the server only auto-starts in paper mode.
 - Prices are probabilities in `(0,1)`; the UI displays them as cents (`¢`).
 - CommonJS throughout (`require`/`module.exports`), `'use strict'` at the top of each
   module.

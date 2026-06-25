@@ -43,7 +43,12 @@ async function main() {
   const feed = new MarketFeed();
   const bot = new TradingBot(feed);
   await feed.start();
-  bot.start(); // auto-start trading; can be toggled from the dashboard
+  await bot.init(); // arms live trading if configured, else stays paper
+
+  // Auto-start only in paper mode. In live mode the user must press Start in the
+  // dashboard so real orders are never placed on boot without intent.
+  if (bot.mode === 'paper') bot.start();
+  else log.warn('LIVE mode — bot is paused; press Start in the dashboard to begin trading real funds');
 
   const sseClients = new Set();
   const broadcast = (event, payload) => {
@@ -69,7 +74,8 @@ async function main() {
     if (url === '/api/state' && req.method === 'GET') return sendJson(res, 200, bot.snapshot());
     if (url === '/api/config' && req.method === 'GET') {
       return sendJson(res, 200, {
-        source: feed.sourceKind, running: bot.running, enabled: bot.enabled,
+        source: feed.sourceKind, running: bot.running, mode: bot.mode,
+        liveAddress: bot.liveAddress, enabled: bot.enabled,
         startingBalance: config.startingBalance, orderSizeUsd: config.orderSizeUsd,
         maxPositionUsd: config.maxPositionUsd, maxExposureUsd: config.maxExposureUsd,
         arbEdge: config.arbEdge, slippageBps: config.slippageBps,
@@ -79,7 +85,7 @@ async function main() {
       const { action } = await readBody(req);
       if (action === 'start') bot.start();
       else if (action === 'stop') bot.stop();
-      else if (action === 'flatten') bot.flatten();
+      else if (action === 'flatten') await bot.flatten();
       else if (action === 'reset') bot.reset();
       else return sendJson(res, 400, { error: 'unknown action' });
       broadcast('update', bot.snapshot());
@@ -93,7 +99,7 @@ async function main() {
     }
     if (url === '/api/order' && req.method === 'POST') {
       const body = await readBody(req);
-      const result = bot.manualOrder(body);
+      const result = await bot.manualOrder(body);
       return sendJson(res, result.ok ? 200 : 400, result);
     }
 

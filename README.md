@@ -50,6 +50,40 @@ modules. Run the tests with `npm test`.
 - **Dashboard** — live equity & PnL, open positions, fills, the signal log, the
   leaderboard you're copying, and one-tap manual Buy/Sell on any market.
 
+## Going live (real wallet)
+
+PolyBot ships **ready to connect to a real Polymarket wallet**, but live trading is
+**off by default** — nothing trades real money until you explicitly arm it. The live
+path authenticates your wallet, derives CLOB API credentials, and submits signed
+marketable (FOK) orders via Polymarket's official client.
+
+To arm it:
+
+1. **Install the live deps** (kept optional so the paper bot stays zero-install):
+   ```bash
+   npm install @polymarket/clob-client ethers
+   ```
+   > Uses **ethers v5** — `@polymarket/clob-client` is not compatible with ethers v6.
+2. In the Polymarket app, **deposit USDC on Polygon** and approve trading (this sets
+   the on-chain allowances the bot relies on).
+3. Set these (ideally via your host's secret manager, **not** a committed file):
+   ```bash
+   PM_LIVE_TRADING=true
+   PM_PRIVATE_KEY=0x...        # the EOA key that controls your account
+   PM_FUNDER_ADDRESS=0x...     # your Polymarket proxy/safe address (if applicable)
+   PM_SIGNATURE_TYPE=1         # 0=EOA, 1=Polymarket proxy, 2=Gnosis safe
+   ```
+4. Start the app. In live mode the bot **does not auto-start** — the dashboard shows a
+   red **LIVE** badge and you must press **Start** to begin trading real funds.
+
+Safety behavior: if the deps are missing or the wallet can't be initialized, the bot
+**refuses to arm and stays in paper mode** rather than trading in an unknown state.
+
+> Caveats before you trust it with size: the dashboard account is a local mirror —
+> it does not yet reconcile against your real on-chain positions/balances; risk limits
+> are enforced on intended order size, not realized fills; and the live order path
+> should be exercised with tiny amounts first. Start small.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and edit. Highlights:

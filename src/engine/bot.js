@@ -9,6 +9,7 @@ const config = require('../config');
 const log = require('../util/logger');
 const { Portfolio } = require('./portfolio');
 const { Executor } = require('./executor');
+const { LiveExecutor } = require('./liveExecutor');
 const { ArbitrageStrategy } = require('./strategies/arbitrage');
 const { MomentumStrategy } = require('./strategies/momentum');
 const { CopyTradeStrategy } = require('./strategies/copyTrade');
@@ -18,7 +19,10 @@ class TradingBot extends EventEmitter {
     super();
     this.feed = feed;
     this.portfolio = new Portfolio(config.startingBalance);
-    this.executor = new Executor(this.portfolio);
+    this.paperExecutor = new Executor(this.portfolio);
+    this.executor = this.paperExecutor; // swapped to live in init() when armed
+    this.mode = 'paper'; // 'paper' | 'live'
+    this.liveAddress = null;
     this.running = false;
     this.enabled = { ...config.strategies };
     this.signalsLog = []; // recent signals (executed or rejected), newest first
@@ -31,28 +35,53 @@ class TradingBot extends EventEmitter {
     feed.on('sourceTrade', (t) => this._onSourceTrade(t));
   }
 
-  start() { this.running = true; log.info('bot started'); }
+  // Arm live trading if configured; otherwise stay on the paper executor.
+  // Safe by default: any failure to initialize live trading leaves the bot in
+  // paper mode rather than trading real funds in an unknown state.
+  async init() {
+    if (!config.live.enabled) return;
+    try {
+      const live = new LiveExecutor(this.portfolio);
+      await live.init();
+      this.executor = live;
+      this.mode = 'live';
+      this.liveAddress = live.address;
+    } catch (e) {
+      log.error(`LIVE TRADING NOT ARMED (${e.message}) — staying in paper mode`);
+      this.mode = 'paper';
+      this.executor = this.paperExecutor;
+    }
+  }
+
+  start() { this.running = true; log.info(`bot started (${this.mode})`); }
   stop() { this.running = false; log.info('bot stopped'); }
 
   setStrategy(name, on) {
     if (name in this.enabled) this.enabled[name] = !!on;
   }
 
+  // Reset the local (display) account. In live mode this only resets the
+  // dashboard mirror — it does not touch real on-chain positions.
   reset() {
     this.portfolio = new Portfolio(config.startingBalance);
-    this.executor = new Executor(this.portfolio);
+    this.paperExecutor = new Executor(this.portfolio);
+    if (this.mode === 'live' && this.executor && this.executor.ready) {
+      this.executor.portfolio = this.portfolio; // keep live client, repoint mirror
+    } else {
+      this.executor = this.paperExecutor;
+    }
     this.signalsLog = [];
     this.momentum.history.clear();
     log.info('account reset');
   }
 
   // Liquidate every open position at the current bid.
-  flatten() {
+  async flatten() {
     const markets = this._marketsById();
     for (const p of [...this.portfolio.positions.values()]) {
       const m = markets.get(p.marketId);
       if (!m) continue;
-      this.executor.execute(
+      await this.executor.execute(
         { marketId: p.marketId, outcome: p.outcome, side: 'SELL', sizeUsd: p.shares * (p.outcome === 'YES' ? m.yesBid : m.noBid), strategy: 'manual', reason: 'flatten' },
         m
       );
@@ -60,9 +89,9 @@ class TradingBot extends EventEmitter {
   }
 
   // Manual order from the dashboard.
-  manualOrder({ marketId, outcome, side, sizeUsd }) {
+  async manualOrder({ marketId, outcome, side, sizeUsd }) {
     const market = this.feed.marketById(marketId);
-    const res = this.executor.execute(
+    const res = await this.executor.execute(
       { marketId, outcome, side, sizeUsd: Number(sizeUsd), strategy: 'manual', reason: 'manual order' },
       market
     );
@@ -75,26 +104,26 @@ class TradingBot extends EventEmitter {
     return new Map(this.feed.markets.map((m) => [m.id, m]));
   }
 
-  _onMarkets(markets) {
+  async _onMarkets(markets) {
     if (this.running) {
       const signals = [];
       if (this.enabled.arbitrage) signals.push(...this.arb.evaluate(markets, this.portfolio));
       if (this.enabled.momentum) signals.push(...this.momentum.evaluate(markets, this.portfolio));
-      for (const s of signals) this._run(s);
+      for (const s of signals) await this._run(s);
     }
     this.emit('update', this.snapshot());
   }
 
-  _onSourceTrade(srcTrade) {
+  async _onSourceTrade(srcTrade) {
     this.emit('sourceTrade', srcTrade);
     if (!this.running || !this.enabled.copyTrade) return;
     const signal = this.copy.fromSourceTrade(srcTrade);
-    if (signal) this._run(signal);
+    if (signal) await this._run(signal);
   }
 
-  _run(signal) {
+  async _run(signal) {
     const market = this.feed.marketById(signal.marketId);
-    const res = this.executor.execute(signal, market);
+    const res = await this.executor.execute(signal, market);
     this._record(signal, res);
   }
 
@@ -118,6 +147,8 @@ class TradingBot extends EventEmitter {
     return {
       ts: Date.now(),
       running: this.running,
+      mode: this.mode,
+      liveAddress: this.liveAddress,
       source: this.feed.sourceKind,
       enabled: this.enabled,
       account: {

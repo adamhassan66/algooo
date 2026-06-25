@@ -23,13 +23,15 @@ class Portfolio {
   }
 
   // Apply a fill. Returns the recorded trade, or throws on insufficient funds.
-  applyFill({ market, outcome, tokenId, side, shares, price, fee = 0, strategy, reason }) {
+  // `force` bypasses the cash guard (used to mirror real live fills, where the
+  // on-chain wallet — not this virtual balance — is the source of truth).
+  applyFill({ market, outcome, tokenId, side, shares, price, fee = 0, strategy, reason, force = false }) {
     const k = key(market.id, outcome);
     let pos = this.positions.get(k);
 
     if (side === 'BUY') {
       const cost = shares * price + fee;
-      if (cost > this.cash + 1e-9) throw new Error('insufficient cash');
+      if (!force && cost > this.cash + 1e-9) throw new Error('insufficient cash');
       this.cash -= cost;
       if (!pos) {
         pos = { marketId: market.id, outcome, tokenId, shares: 0, avgPrice: 0 };

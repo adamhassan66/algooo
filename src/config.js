@@ -69,6 +69,18 @@ const config = {
   copyTopN: num('PM_COPY_TOP_N', 3),
   copyScale: num('PM_COPY_SCALE', 0.02),
 
+  // LIVE TRADING (real money) — disabled by default. Requires the optional
+  // deps (@polymarket/clob-client, ethers) and a wallet key. See README.
+  live: {
+    enabled: bool('PM_LIVE_TRADING', false),
+    privateKey: process.env.PM_PRIVATE_KEY || '',
+    funderAddress: process.env.PM_FUNDER_ADDRESS || '',
+    // 0 = EOA, 1 = Polymarket proxy, 2 = Polymarket Gnosis safe
+    signatureType: num('PM_SIGNATURE_TYPE', 0),
+    host: process.env.PM_CLOB_HOST || 'https://clob.polymarket.com',
+    chainId: num('PM_CHAIN_ID', 137),
+  },
+
   publicDir: path.join(__dirname, '..', 'public'),
 
   // Polymarket public API endpoints (used when reachable)

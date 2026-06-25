@@ -25,6 +25,13 @@ function render(s) {
   srcEl.textContent = s.source;
   srcEl.className = 'pill ' + s.source;
 
+  const modeEl = $('#mode');
+  const live = s.mode === 'live';
+  modeEl.textContent = live ? 'LIVE' : 'PAPER';
+  modeEl.className = 'pill ' + (live ? 'live-mode' : 'paper-mode');
+  modeEl.title = live ? (s.liveAddress || 'real funds') : 'simulation';
+  document.body.classList.toggle('is-live', live);
+
   const runBtn = $('#toggleRun');
   runBtn.textContent = s.running ? 'Stop' : 'Start';
   runBtn.classList.toggle('running', s.running);

@@ -284,23 +284,61 @@ function connect() {
 }
 
 /* ---- auth gate ---- */
+let authRequired = false;
 function showLock() {
   $('#lockScreen').classList.add('show');
   $('#pinInput').focus();
 }
 function hideLock() { $('#lockScreen').classList.remove('show'); }
 
+let lockoutTimer = null;
+function startLockout(seconds) {
+  $('#unlockBtn').disabled = true;
+  clearInterval(lockoutTimer);
+  let left = seconds;
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(lockoutTimer);
+      $('#unlockBtn').disabled = false;
+      $('#lockError').textContent = '';
+    } else {
+      $('#lockError').textContent = `Too many attempts — try again in ${left}s`;
+      left--;
+    }
+  };
+  tick();
+  lockoutTimer = setInterval(tick, 1000);
+}
+
 async function unlock() {
+  if ($('#unlockBtn').disabled) return;
   const pin = $('#pinInput').value;
   const r = await post('/api/login', { pin });
-  if (r.ok) { $('#lockError').textContent = ''; $('#pinInput').value = ''; hideLock(); connect(); }
-  else { $('#lockError').textContent = r.error || 'incorrect PIN'; $('#pinInput').select(); }
+  if (r.ok) {
+    $('#lockError').textContent = ''; $('#pinInput').value = '';
+    clearInterval(lockoutTimer); $('#unlockBtn').disabled = false;
+    hideLock(); connect();
+  } else if (r.retryAfter) {
+    $('#pinInput').value = '';
+    startLockout(r.retryAfter);
+  } else {
+    $('#lockError').textContent = r.error || 'incorrect PIN';
+    $('#pinInput').select();
+  }
 }
 $('#unlockBtn').onclick = unlock;
 $('#pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
 
+$('#logoutBtn').onclick = async () => {
+  await post('/api/logout', {});
+  if (stream) { stream.close(); stream = null; }
+  showLock();
+};
+
 async function init() {
   const a = await fetch('/api/auth').then((r) => r.json()).catch(() => ({ required: false, authed: true }));
+  authRequired = !!a.required;
+  $('#sessionCard').style.display = authRequired ? 'block' : 'none';
   if (a.required && !a.authed) showLock();
   else connect();
 }

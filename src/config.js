@@ -46,6 +46,9 @@ const config = {
   // Optional PIN/passphrase gating the dashboard + API. When set, clients must
   // log in; when empty, the dashboard is open (fine for local/trusted networks).
   dashboardPin: process.env.PM_DASHBOARD_PIN || '',
+  // Brute-force protection for the login endpoint.
+  loginMaxAttempts: num('PM_LOGIN_MAX_ATTEMPTS', 5),
+  loginLockoutMs: num('PM_LOGIN_LOCKOUT_MS', 60000),
 
   // paper account
   startingBalance: num('PM_STARTING_BALANCE', 10000),

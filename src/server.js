@@ -65,6 +65,30 @@ function clearSessionCookie(res) {
   res.setHeader('set-cookie', `${COOKIE}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0`);
 }
 
+// In-memory login throttle, keyed by client IP. After loginMaxAttempts failures
+// the IP is locked out for loginLockoutMs. Cleared on a successful login.
+const loginAttempts = new Map();
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
+}
+function loginLockRemainingMs(ip) {
+  const rec = loginAttempts.get(ip);
+  if (rec && rec.lockedUntil > Date.now()) return rec.lockedUntil - Date.now();
+  return 0;
+}
+function recordLoginFailure(ip) {
+  const rec = loginAttempts.get(ip) || { fails: 0, lockedUntil: 0 };
+  rec.fails += 1;
+  if (rec.fails >= config.loginMaxAttempts) {
+    rec.lockedUntil = Date.now() + config.loginLockoutMs;
+    rec.fails = 0;
+    log.warn(`login locked out ${ip} for ${Math.round(config.loginLockoutMs / 1000)}s`);
+  }
+  loginAttempts.set(ip, rec);
+}
+
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
@@ -121,8 +145,21 @@ async function main() {
     if (url === '/api/login' && req.method === 'POST') {
       const { pin } = await readBody(req);
       if (!AUTH_REQUIRED) return sendJson(res, 200, { ok: true });
-      if (pinMatches(pin)) { setSessionCookie(req, res); return sendJson(res, 200, { ok: true }); }
-      return sendJson(res, 401, { ok: false, error: 'incorrect PIN' });
+      const ip = clientIp(req);
+      const lockMs = loginLockRemainingMs(ip);
+      if (lockMs > 0) {
+        return sendJson(res, 429, { ok: false, error: 'too many attempts', retryAfter: Math.ceil(lockMs / 1000) });
+      }
+      if (pinMatches(pin)) {
+        loginAttempts.delete(ip);
+        setSessionCookie(req, res);
+        return sendJson(res, 200, { ok: true });
+      }
+      recordLoginFailure(ip);
+      const left = loginLockRemainingMs(ip);
+      return sendJson(res, 401, left > 0
+        ? { ok: false, error: 'too many attempts', retryAfter: Math.ceil(left / 1000) }
+        : { ok: false, error: 'incorrect PIN' });
     }
     if (url === '/api/logout' && req.method === 'POST') {
       clearSessionCookie(res);

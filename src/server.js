@@ -138,6 +138,12 @@ async function main() {
   const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0];
 
+    // --- health check (public, no auth — used by the cloud host) ---
+    if (url === '/healthz') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end('{"ok":true}');
+    }
+
     // --- auth endpoints (always reachable) ---
     if (url === '/api/auth' && req.method === 'GET') {
       return sendJson(res, 200, { required: AUTH_REQUIRED, authed: isAuthed(req) });

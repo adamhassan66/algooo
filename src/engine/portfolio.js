@@ -16,6 +16,7 @@ class Portfolio {
     this.realizedPnl = 0;
     this.positions = new Map(); // key -> { marketId, outcome, tokenId, shares, avgPrice }
     this.trades = []; // newest first
+    this.closedTrades = []; // realized round-trips: { ts, pnl } (oldest first)
   }
 
   position(marketId, outcome) {
@@ -46,7 +47,10 @@ class Portfolio {
       const sold = Math.min(shares, pos.shares);
       const proceeds = sold * price - fee;
       this.cash += proceeds;
-      this.realizedPnl += sold * (price - pos.avgPrice) - fee;
+      const realized = sold * (price - pos.avgPrice) - fee;
+      this.realizedPnl += realized;
+      this.closedTrades.push({ ts: Date.now(), pnl: realized });
+      if (this.closedTrades.length > 1000) this.closedTrades.shift();
       pos.shares -= sold;
       shares = sold;
       if (pos.shares <= 1e-9) this.positions.delete(k);

@@ -5,6 +5,8 @@ const assert = require('node:assert');
 const { Portfolio } = require('../src/engine/portfolio');
 const { ArbitrageStrategy } = require('../src/engine/strategies/arbitrage');
 const { TakeProfitStrategy } = require('../src/engine/strategies/takeProfit');
+const { MarketFeed } = require('../src/polymarket/feed');
+const { TradingBot } = require('../src/engine/bot');
 
 const market = (over = {}) => ({
   id: 'm1', question: 'Q?', yesTokenId: 'm1_YES', noTokenId: 'm1_NO',
@@ -71,8 +73,31 @@ test('take-profit sells a winner and holds a flat position', () => {
   assert.equal(sells[0].side, 'SELL');
   assert.match(sells[0].reason, /take-profit/);
 
-  // a barely-moved position is left alone
-  assert.equal(strat.evaluate([market({ yesBid: 0.51 })], p).length, 0);
+  // a barely-moved position (+1%, below the 2% target) is left alone
+  assert.equal(strat.evaluate([market({ yesBid: 0.505 })], p).length, 0);
+});
+
+test('readiness gate: insufficient -> not_ready (losing) -> ready (winning)', () => {
+  const bot = new TradingBot(new MarketFeed());
+
+  // too few trades
+  bot.portfolio.closedTrades = [{ ts: 1, pnl: 0.1 }, { ts: 2, pnl: 0.1 }];
+  bot.portfolio.realizedPnl = 0.2;
+  assert.equal(bot.performance().readiness, 'insufficient');
+
+  // enough trades but net-negative / poor win rate => not ready
+  bot.portfolio.closedTrades = Array.from({ length: 25 }, (_, i) => ({ ts: i, pnl: i % 2 ? 0.05 : -0.2 }));
+  bot.portfolio.realizedPnl = bot.portfolio.closedTrades.reduce((s, c) => s + c.pnl, 0);
+  assert.ok(bot.portfolio.realizedPnl < 0);
+  assert.equal(bot.performance().readiness, 'not_ready');
+
+  // many consistent small wins => ready
+  bot.portfolio.closedTrades = Array.from({ length: 30 }, (_, i) => ({ ts: i, pnl: i % 5 === 0 ? -0.05 : 0.06 }));
+  bot.portfolio.realizedPnl = bot.portfolio.closedTrades.reduce((s, c) => s + c.pnl, 0);
+  const perf = bot.performance();
+  assert.ok(perf.winRate >= 0.55, `win rate ${perf.winRate}`);
+  assert.ok(perf.realizedPnl > 0);
+  assert.equal(perf.readiness, 'ready');
 });
 
 test('arbitrage fires only when YES_ask + NO_ask < 1 - edge', () => {

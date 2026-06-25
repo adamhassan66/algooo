@@ -83,7 +83,15 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   tracks the session. All sync is best-effort: a failure leaves the last good mirror.
 
 - **Portfolio** (`src/engine/portfolio.js`) — the virtual account: cash, positions
-  keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`.
+  keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`. Each
+  SELL also pushes a `{ts, pnl}` to `closedTrades` for win-rate/readiness stats.
+
+- **Readiness gate** (`bot.performance()`) — summarizes closed-trade win rate and
+  realized PnL and emits `readiness: insufficient|not_ready|ready`. The intended
+  workflow is paper-trading against the **live data source** (real prices, mock money)
+  until the dashboard banner turns green, then connecting a wallet. Thresholds in
+  `config.readiness` (`minTrades`/`minWinRate`/`window`). It only goes green on
+  genuinely profitable configs — losing scalps stay amber.
 
 - **Server** (`src/server.js`) — serves `public/`, a small JSON REST API
   (`/api/state`, `/api/config`, `/api/control`, `/api/strategies`, `/api/order`,

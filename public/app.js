@@ -47,6 +47,7 @@ function render(s) {
   runBtn.classList.toggle('running', s.running);
 
   renderStrategies(s.enabled);
+  renderReadiness(s.performance, s.source);
   renderStats(s.account);
   renderMarkets(s.markets);
   renderPositions(s.positions);
@@ -76,6 +77,26 @@ function renderStrategies(enabled) {
   $('#strategies').innerHTML = Object.entries(enabled)
     .map(([k, v]) => `<button class="strat-toggle ${v ? 'on' : ''}" data-strat="${k}">${labels[k] || k}</button>`)
     .join('');
+}
+
+function renderReadiness(p, source) {
+  if (!p) return;
+  const el = $('#readiness');
+  const wr = (p.winRate * 100).toFixed(0);
+  const dataNote = source === 'live' ? 'real market data' : 'mock data — switch source to Live for a real test';
+  let cls, text;
+  if (p.readiness === 'ready') {
+    cls = 'ready';
+    text = `✓ Consistently profitable — ${p.closed} trades, ${wr}% win, ${signed(p.realizedPnl)}. Ready to go live → open ⚙ to connect a wallet.`;
+  } else if (p.readiness === 'not_ready') {
+    cls = 'notready';
+    text = `Not consistent yet — ${p.closed} trades, ${wr}% win, ${signed(p.realizedPnl)} realized. Keep evaluating (${dataNote}).`;
+  } else {
+    cls = 'building';
+    text = `Evaluating strategy… ${p.closed}/${p.needTrades} closed trades (${dataNote}).`;
+  }
+  el.className = 'readiness ' + cls;
+  el.textContent = text;
 }
 
 function renderStats(a) {

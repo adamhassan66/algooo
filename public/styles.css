@@ -69,6 +69,12 @@ body.is-live .topbar { border-bottom-color: var(--red); box-shadow: 0 1px 0 var(
 /* live wallet info line */
 .liveinfo { display: none; font-size: 12px; font-weight: 600; color: var(--red); margin: 0 0 12px; font-variant-numeric: tabular-nums; }
 
+/* readiness banner */
+.readiness { font-size: 13px; font-weight: 600; line-height: 1.45; border-radius: 12px; padding: 11px 13px; margin-bottom: 14px; border: 1px solid var(--border); }
+.readiness.building { color: var(--muted); background: var(--bg-elev); }
+.readiness.notready { color: #ffb454; background: rgba(255,180,84,.08); border-color: rgba(255,180,84,.3); }
+.readiness.ready { color: var(--green); background: rgba(46,204,113,.1); border-color: var(--green); }
+
 /* stats grid */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
 .stat { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }

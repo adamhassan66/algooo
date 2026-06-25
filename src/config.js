@@ -54,7 +54,7 @@ const config = {
   startingBalance: num('PM_STARTING_BALANCE', 10),
   slippageBps: num('PM_SLIPPAGE_BPS', 50),
   takerFeeBps: num('PM_TAKER_FEE_BPS', 0),
-  tickMs: Math.max(250, num('PM_TICK_MS', 1500)),
+  tickMs: Math.max(250, num('PM_TICK_MS', 1000)),
 
   // risk — sized for a small, fast-scalping account by default
   orderSizeUsd: num('PM_ORDER_SIZE_USD', 2),
@@ -69,12 +69,21 @@ const config = {
     copyTrade: bool('PM_STRAT_COPY', true),
   },
   arbEdge: num('PM_ARB_EDGE', 0.02),
-  momentumWindowMs: num('PM_MOMENTUM_WINDOW_MS', 8000),
-  momentumThreshold: num('PM_MOMENTUM_THRESHOLD', 0.03),
+  momentumWindowMs: num('PM_MOMENTUM_WINDOW_MS', 4000), // short window = fast signals
+  momentumThreshold: num('PM_MOMENTUM_THRESHOLD', 0.02), // enter on smaller moves
 
-  // scalping exits: lock small gains fast, cut large losers
-  takeProfitPct: num('PM_TAKE_PROFIT_PCT', 0.05), // sell when a position is +5%
-  stopLossPct: num('PM_STOP_LOSS_PCT', 0.2), // cut at -20% (0 disables)
+  // fast scalping exits: take a small gain within seconds, keep losses tight so
+  // it's small-win / small-loss (not small-win / occasional-blowup)
+  takeProfitPct: num('PM_TAKE_PROFIT_PCT', 0.02), // sell when a position is +2%
+  stopLossPct: num('PM_STOP_LOSS_PCT', 0.04), // cut at -4% (0 disables)
+
+  // "ready to go live" gate: turns green only when paper performance is
+  // consistently profitable across a meaningful sample.
+  readiness: {
+    minTrades: num('PM_READY_MIN_TRADES', 20), // need at least this many closed trades
+    minWinRate: num('PM_READY_WIN_RATE', 0.55), // and this win rate
+    window: num('PM_READY_WINDOW', 20), // recent closed trades that must also be net positive
+  },
 
   // copy trading
   copyWallets: list('PM_COPY_WALLETS', []),

@@ -59,6 +59,27 @@ modules. Run the tests with `npm test`.
 - **Dashboard** — live equity & PnL, open positions, fills, the signal log, the
   leaderboard you're copying, and one-tap manual Buy/Sell on any market.
 
+## Recommended workflow: paper-test on real data, then go live
+
+You don't have to guess when a strategy is good enough. PolyBot can paper-trade
+(mock money) against **real Polymarket prices**, and a **readiness indicator** tells you
+when it's consistently profitable:
+
+1. Open **⚙ Settings → Data source → Live** — now it trades virtual money against real
+   market prices, order books, and copy-wallet activity (no funds at risk).
+2. Let it run. The banner at the top tracks closed trades, win rate, and realized PnL:
+   - grey *"Evaluating…"* while it gathers a sample,
+   - amber *"Not consistent yet"* if it isn't reliably winning,
+   - green *"✓ Consistently profitable — ready to go live"* once it clears the bar
+     (default: ≥20 closed trades, ≥55% win rate, positive realized PnL, and still
+     positive over the recent window — all tunable via `PM_READY_*`).
+3. **Only when it's green**, go live: ⚙ Settings → connect your wallet → press Start.
+
+This is deliberately honest — losing configs (e.g. aggressive momentum scalping on
+choppy markets) stay amber/red, so the indicator won't nudge you live until the edge
+is real. Note that arbitrage and copy-trading are the genuinely consistent edges;
+momentum is the speculative one.
+
 ## Going live (real wallet)
 
 PolyBot ships **ready to connect to a real Polymarket wallet**, but live trading is

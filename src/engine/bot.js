@@ -208,6 +208,36 @@ class TradingBot extends EventEmitter {
     if (this.signalsLog.length > 200) this.signalsLog.length = 200;
   }
 
+  // Summarize closed-trade performance and whether it's "consistently working"
+  // enough to consider going live. Honest gate: stays not-ready on losing configs.
+  performance() {
+    const closed = this.portfolio.closedTrades;
+    const n = closed.length;
+    const wins = closed.filter((c) => c.pnl > 0).length;
+    const winRate = n ? wins / n : 0;
+    const realizedPnl = this.portfolio.realizedPnl;
+    const r = config.readiness;
+    const recent = closed.slice(-r.window);
+    const recentPnl = recent.reduce((s, c) => s + c.pnl, 0);
+
+    let readiness = 'insufficient';
+    if (n >= r.minTrades) {
+      readiness = realizedPnl > 0 && winRate >= r.minWinRate && recentPnl > 0 ? 'ready' : 'not_ready';
+    }
+    return {
+      closed: n,
+      wins,
+      losses: n - wins,
+      winRate,
+      realizedPnl,
+      recentPnl,
+      readiness,
+      needTrades: r.minTrades,
+      needWinRate: r.minWinRate,
+      onRealData: this.feed.sourceKind === 'live',
+    };
+  }
+
   snapshot() {
     const marketsById = this._marketsById();
     const val = this.portfolio.valuation(marketsById);
@@ -219,6 +249,7 @@ class TradingBot extends EventEmitter {
       liveSyncTs: this.mode === 'live' && this.executor ? this.executor.lastSync : null,
       source: this.feed.sourceKind,
       enabled: this.enabled,
+      performance: this.performance(),
       account: {
         startingBalance: this.portfolio.startingBalance,
         cash: val.cash,

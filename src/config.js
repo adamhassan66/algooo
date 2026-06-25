@@ -43,6 +43,10 @@ const config = {
   port: num('PORT', 3000),
   forceMock: bool('PM_FORCE_MOCK', false),
 
+  // Optional PIN/passphrase gating the dashboard + API. When set, clients must
+  // log in; when empty, the dashboard is open (fine for local/trusted networks).
+  dashboardPin: process.env.PM_DASHBOARD_PIN || '',
+
   // paper account
   startingBalance: num('PM_STARTING_BALANCE', 10000),
   slippageBps: num('PM_SLIPPAGE_BPS', 50),

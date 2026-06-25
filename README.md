@@ -20,6 +20,10 @@ Tap the button, sign in with GitHub, and Render builds it from `render.yaml` and
 gives you a public `https://…onrender.com` URL — open that on your iPhone and add it
 to the Home Screen. (Free tier sleeps after ~15 min idle and cold-starts in ~30s.)
 
+> **Set a PIN.** Render prompts for `PM_DASHBOARD_PIN` at deploy. Because the URL is
+> public, set one — the dashboard then shows a lock screen and every API call requires
+> it. Leave it blank only on a trusted local network.
+
 ## Quick start
 
 ```bash

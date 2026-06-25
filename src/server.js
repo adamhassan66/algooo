@@ -5,12 +5,65 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const config = require('./config');
 const log = require('./util/logger');
 const { MarketFeed } = require('./polymarket/feed');
 const { TradingBot } = require('./engine/bot');
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+
+// --- auth (optional PIN gate) ---------------------------------------------
+// Sessions are stateless HMAC-signed tokens "<expiry>.<sig>". The signing
+// secret is random per process, so a restart invalidates outstanding sessions.
+const AUTH_REQUIRED = !!config.dashboardPin;
+const SESSION_SECRET = crypto.randomBytes(32);
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const COOKIE = 'pb_session';
+
+function sign(value) {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(String(value)).digest('hex');
+}
+function issueToken() {
+  const exp = Date.now() + SESSION_TTL_MS;
+  return `${exp}.${sign(exp)}`;
+}
+function tokenValid(token) {
+  if (!token || typeof token !== 'string') return false;
+  const dot = token.indexOf('.');
+  if (dot === -1) return false;
+  const exp = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = sign(exp);
+  if (sig.length !== expected.length) return false;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  return Number(exp) > Date.now();
+}
+function pinMatches(pin) {
+  const a = crypto.createHash('sha256').update(String(pin || '')).digest();
+  const b = crypto.createHash('sha256').update(String(config.dashboardPin)).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+function getCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+function isAuthed(req) {
+  if (!AUTH_REQUIRED) return true;
+  return tokenValid(getCookie(req, COOKIE));
+}
+function setSessionCookie(req, res) {
+  const secure = (req.headers['x-forwarded-proto'] || '').includes('https') ? ' Secure;' : '';
+  res.setHeader('set-cookie',
+    `${COOKIE}=${issueToken()}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)};${secure}`);
+}
+function clearSessionCookie(res) {
+  res.setHeader('set-cookie', `${COOKIE}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0`);
+}
 
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -60,6 +113,26 @@ async function main() {
 
   const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0];
+
+    // --- auth endpoints (always reachable) ---
+    if (url === '/api/auth' && req.method === 'GET') {
+      return sendJson(res, 200, { required: AUTH_REQUIRED, authed: isAuthed(req) });
+    }
+    if (url === '/api/login' && req.method === 'POST') {
+      const { pin } = await readBody(req);
+      if (!AUTH_REQUIRED) return sendJson(res, 200, { ok: true });
+      if (pinMatches(pin)) { setSessionCookie(req, res); return sendJson(res, 200, { ok: true }); }
+      return sendJson(res, 401, { ok: false, error: 'incorrect PIN' });
+    }
+    if (url === '/api/logout' && req.method === 'POST') {
+      clearSessionCookie(res);
+      return sendJson(res, 200, { ok: true });
+    }
+
+    // --- everything else under /api requires a valid session ---
+    if (url.startsWith('/api/') && !isAuthed(req)) {
+      return sendJson(res, 401, { error: 'unauthorized' });
+    }
 
     // --- SSE live stream ---
     if (url === '/api/stream') {

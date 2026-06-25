@@ -82,6 +82,10 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   a live wallet at runtime), and the SSE stream `/api/stream`. Trading is **always
   server-side**; the dashboard is view + control only. The connect endpoint never
   echoes the key, and the key is held only in memory (not persisted, not in snapshots).
+  When `PM_DASHBOARD_PIN` is set, all `/api/*` except `/api/auth` and `/api/login`
+  require a valid session cookie — a stateless HMAC token (random per-process secret,
+  so restarts log everyone out); the frontend shows a lock screen until `/api/login`
+  succeeds. No PIN ⇒ open (local/trusted use).
 
 - **Dashboard** (`public/`) — one `EventSource('/api/stream')` re-renders the whole
   UI from each snapshot. Controls POST to the REST API. No framework, no bundler.

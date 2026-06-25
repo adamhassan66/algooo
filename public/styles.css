@@ -132,6 +132,16 @@ body.is-live .topbar { border-bottom-color: var(--red); box-shadow: 0 1px 0 var(
 .warn { margin-top: 14px; font-size: 12px; line-height: 1.5; color: var(--muted); background: rgba(255,84,112,.08); border: 1px solid rgba(255,84,112,.25); border-radius: 10px; padding: 11px; }
 .sheet-quote { font-size: 13px; color: var(--muted); text-align: center; margin: 8px 0; }
 
+/* lock screen */
+.lock { position: fixed; inset: 0; z-index: 70; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; }
+.lock.show { display: flex; }
+.lock-card { width: 100%; max-width: 340px; text-align: center; }
+.lock-logo { font-size: 40px; color: var(--accent); }
+.lock-card h2 { margin: 6px 0 2px; }
+.lock-card .sub { color: var(--muted); margin-bottom: 18px; }
+.lock-card input { width: 100%; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; color: var(--text); padding: 14px; font-size: 18px; text-align: center; letter-spacing: 4px; }
+.lock-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0; }
+
 /* toast */
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); background: var(--bg-elev2); border: 1px solid var(--border); color: var(--text); padding: 11px 18px; border-radius: 12px; font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: all .25s; z-index: 60; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

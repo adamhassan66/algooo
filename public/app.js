@@ -266,13 +266,42 @@ $('#submitOrder').onclick = async () => {
 };
 
 /* ---- live stream ---- */
+let stream = null;
 function connect() {
+  if (stream) return;
   const es = new EventSource('/api/stream');
+  stream = es;
   es.addEventListener('update', (e) => render(JSON.parse(e.data)));
   es.addEventListener('sourceTrade', (e) => {
     const t = JSON.parse(e.data);
     toast(`${t.trader}: ${t.side} ${t.outcome} $${Math.round(t.sizeUsd)}`);
   });
-  es.onerror = () => { /* EventSource auto-reconnects */ };
+  es.onerror = async () => {
+    // Could be a normal reconnect or an expired session — re-check auth.
+    const a = await fetch('/api/auth').then((r) => r.json()).catch(() => null);
+    if (a && a.required && !a.authed) { es.close(); stream = null; showLock(); }
+  };
 }
-connect();
+
+/* ---- auth gate ---- */
+function showLock() {
+  $('#lockScreen').classList.add('show');
+  $('#pinInput').focus();
+}
+function hideLock() { $('#lockScreen').classList.remove('show'); }
+
+async function unlock() {
+  const pin = $('#pinInput').value;
+  const r = await post('/api/login', { pin });
+  if (r.ok) { $('#lockError').textContent = ''; $('#pinInput').value = ''; hideLock(); connect(); }
+  else { $('#lockError').textContent = r.error || 'incorrect PIN'; $('#pinInput').select(); }
+}
+$('#unlockBtn').onclick = unlock;
+$('#pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+
+async function init() {
+  const a = await fetch('/api/auth').then((r) => r.json()).catch(() => ({ required: false, authed: true }));
+  if (a.required && !a.authed) showLock();
+  else connect();
+}
+init();

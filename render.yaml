@@ -18,3 +18,7 @@ services:
       # live data where the APIs are reachable.
       - key: PM_FORCE_MOCK
         value: "false"
+      # PIN that gates the public dashboard. Render prompts for this at deploy;
+      # strongly recommended since the URL is public. Leave blank to run open.
+      - key: PM_DASHBOARD_PIN
+        sync: false

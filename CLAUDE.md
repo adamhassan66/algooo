@@ -49,12 +49,21 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
 
 - **Strategies** (`src/engine/strategies/`) — each returns/produces *signals*, never
   touching the portfolio directly:
+  - `takeProfit.js` — the exit/scalping rule: marks open positions to the bid and
+    SELLs to close on `takeProfitPct` gain or `stopLossPct` loss. Runs first each
+    tick so gains are realized and capital recycled before new entries. This is what
+    makes the small-balance "fast gains" preset work.
   - `arbitrage.js` — buys both YES+NO when `yesAsk + noAsk < 1 - arbEdge`
     (guaranteed $1 redemption = risk-free edge; the speed play).
   - `momentum.js` — rolling YES-midpoint window; fast up-move buys YES, fast
     down-move buys NO.
   - `copyTrade.js` — event-driven (`fromSourceTrade`), mirrors tracked-wallet
     trades scaled by `copyScale`.
+
+  Defaults are tuned for a small, fast-scalping account: `$10` start, `$2` orders,
+  `$10` max exposure, take-profit at +5%, stop-loss at -20%. The mock feed adds mild
+  per-market drift so momentum/exits behave like real trending markets, not a pure
+  random walk.
 
 - **Executor** (`src/engine/executor.js`) — turns a signal into a simulated fill:
   crosses the book, applies `slippageBps`/`takerFeeBps`, enforces risk limits

@@ -51,18 +51,19 @@ const config = {
   loginLockoutMs: num('PM_LOGIN_LOCKOUT_MS', 60000),
 
   // paper account
-  startingBalance: num('PM_STARTING_BALANCE', 10000),
+  startingBalance: num('PM_STARTING_BALANCE', 10),
   slippageBps: num('PM_SLIPPAGE_BPS', 50),
   takerFeeBps: num('PM_TAKER_FEE_BPS', 0),
   tickMs: Math.max(250, num('PM_TICK_MS', 1500)),
 
-  // risk
-  orderSizeUsd: num('PM_ORDER_SIZE_USD', 200),
-  maxPositionUsd: num('PM_MAX_POSITION_USD', 1000),
-  maxExposureUsd: num('PM_MAX_EXPOSURE_USD', 8000),
+  // risk — sized for a small, fast-scalping account by default
+  orderSizeUsd: num('PM_ORDER_SIZE_USD', 2),
+  maxPositionUsd: num('PM_MAX_POSITION_USD', 4),
+  maxExposureUsd: num('PM_MAX_EXPOSURE_USD', 10),
 
   // strategies
   strategies: {
+    takeProfit: bool('PM_STRAT_TAKE_PROFIT', true),
     arbitrage: bool('PM_STRAT_ARB', true),
     momentum: bool('PM_STRAT_MOMENTUM', true),
     copyTrade: bool('PM_STRAT_COPY', true),
@@ -70,6 +71,10 @@ const config = {
   arbEdge: num('PM_ARB_EDGE', 0.02),
   momentumWindowMs: num('PM_MOMENTUM_WINDOW_MS', 8000),
   momentumThreshold: num('PM_MOMENTUM_THRESHOLD', 0.03),
+
+  // scalping exits: lock small gains fast, cut large losers
+  takeProfitPct: num('PM_TAKE_PROFIT_PCT', 0.05), // sell when a position is +5%
+  stopLossPct: num('PM_STOP_LOSS_PCT', 0.2), // cut at -20% (0 disables)
 
   // copy trading
   copyWallets: list('PM_COPY_WALLETS', []),

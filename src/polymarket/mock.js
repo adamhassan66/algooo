@@ -44,7 +44,7 @@ function makeBook(yesMid, spread) {
 function buildMarket(question) {
   const id = `mkt_${++_id}`;
   const yesMid = rand(0.2, 0.8);
-  const spread = rand(0.01, 0.04);
+  const spread = rand(0.005, 0.02); // tight, liquid-market-like spreads
   return {
     id,
     slug: id,
@@ -56,6 +56,8 @@ function buildMarket(question) {
     noTokenId: `${id}_NO`,
     _yesMid: yesMid,
     _spread: spread,
+    _drift: rand(-0.004, 0.004), // persistent trend, like real intraday markets
+
     ...makeBook(yesMid, spread),
     updatedAt: Date.now(),
   };
@@ -83,8 +85,10 @@ class MockSource {
   // arbitrage window where YES_ask + NO_ask dips below 1.
   tick(markets) {
     for (const m of markets) {
-      m._yesMid = clamp(m._yesMid + rand(-0.02, 0.02), 0.03, 0.97);
-      m._spread = clamp(m._spread + rand(-0.005, 0.005), 0.008, 0.06);
+      // trend (drift) + noise; the drift occasionally flips direction.
+      if (Math.random() < 0.04) m._drift = rand(-0.004, 0.004);
+      m._yesMid = clamp(m._yesMid + m._drift + rand(-0.01, 0.01), 0.03, 0.97);
+      m._spread = clamp(m._spread + rand(-0.003, 0.003), 0.005, 0.03);
       Object.assign(m, makeBook(m._yesMid, m._spread));
 
       // ~3% chance per tick to briefly misprice the two books into an arb.

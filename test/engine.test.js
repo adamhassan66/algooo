@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { Portfolio } = require('../src/engine/portfolio');
 const { ArbitrageStrategy } = require('../src/engine/strategies/arbitrage');
+const { TakeProfitStrategy } = require('../src/engine/strategies/takeProfit');
 
 const market = (over = {}) => ({
   id: 'm1', question: 'Q?', yesTokenId: 'm1_YES', noTokenId: 'm1_NO',
@@ -56,6 +57,22 @@ test('loadSnapshot reconciles cash + positions from on-chain truth', () => {
   assert.ok(Math.abs(v.positionsValue - 40 * 0.45) < 1e-9, 'valued at curPrice');
   assert.ok(Math.abs(v.unrealizedPnl - 40 * (0.45 - 0.3)) < 1e-9, 'unrealized from on-chain avg');
   assert.equal(v.positions[0].question, 'Real market?', 'carries title for off-feed markets');
+});
+
+test('take-profit sells a winner and holds a flat position', () => {
+  const strat = new TakeProfitStrategy();
+  const p = new Portfolio(10);
+  const m = market();
+  // buy YES at 0.50, mark moves so bid = 0.60 -> +20% gain (>= 5% target)
+  p.applyFill({ market: m, outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 4, price: 0.5 });
+  const winner = market({ yesBid: 0.6 });
+  const sells = strat.evaluate([winner], p);
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0].side, 'SELL');
+  assert.match(sells[0].reason, /take-profit/);
+
+  // a barely-moved position is left alone
+  assert.equal(strat.evaluate([market({ yesBid: 0.51 })], p).length, 0);
 });
 
 test('arbitrage fires only when YES_ask + NO_ask < 1 - edge', () => {

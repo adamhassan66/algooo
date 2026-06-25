@@ -13,6 +13,7 @@ const { LiveExecutor } = require('./liveExecutor');
 const { ArbitrageStrategy } = require('./strategies/arbitrage');
 const { MomentumStrategy } = require('./strategies/momentum');
 const { CopyTradeStrategy } = require('./strategies/copyTrade');
+const { TakeProfitStrategy } = require('./strategies/takeProfit');
 
 class TradingBot extends EventEmitter {
   constructor(feed) {
@@ -28,6 +29,7 @@ class TradingBot extends EventEmitter {
     this.enabled = { ...config.strategies };
     this.signalsLog = []; // recent signals (executed or rejected), newest first
 
+    this.takeProfit = new TakeProfitStrategy();
     this.arb = new ArbitrageStrategy();
     this.momentum = new MomentumStrategy();
     this.copy = new CopyTradeStrategy();
@@ -144,6 +146,8 @@ class TradingBot extends EventEmitter {
   async _onMarkets(markets) {
     if (this.running) {
       const signals = [];
+      // Exits first, to realize gains and free capital before new entries.
+      if (this.enabled.takeProfit) signals.push(...this.takeProfit.evaluate(markets, this.portfolio));
       if (this.enabled.arbitrage) signals.push(...this.arb.evaluate(markets, this.portfolio));
       if (this.enabled.momentum) signals.push(...this.momentum.evaluate(markets, this.portfolio));
       for (const s of signals) await this._run(s);

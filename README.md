@@ -44,11 +44,16 @@ modules. Run the tests with `npm test`.
   reachable from where you're running it, it transparently switches to a realistic
   **mock market simulator** so everything still runs end-to-end.
 - **Strategies** (toggle each from the dashboard):
+  - **Take-Profit** — the scalping exit: closes a position as soon as it's up ~5% and
+    cuts losers at ~20%, so a small balance is recycled into many fast small gains.
   - **Arbitrage** — when YES and NO can be bought for less than $1 combined, buys both
     legs for a risk-free edge.
   - **Momentum** — rides fast short-window price moves.
   - **Copy-trading** — mirrors the trades of top-PnL wallets from the leaderboard (or
     wallets you specify), scaled to your account.
+
+  Defaults are set for a **small, fast-gains** account: starts with **$10**, ~$2 per
+  order, take-profit at +5%, stop-loss at -20%. Scale up via the `PM_*` env vars.
 - **Risk controls** — per-market and total exposure caps, configurable order size,
   modelled slippage and fees.
 - **Dashboard** — live equity & PnL, open positions, fills, the signal log, the

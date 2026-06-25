@@ -69,6 +69,15 @@ body.is-live .topbar { border-bottom-color: var(--red); box-shadow: 0 1px 0 var(
 /* live wallet info line */
 .liveinfo { display: none; font-size: 12px; font-weight: 600; color: var(--red); margin: 0 0 12px; font-variant-numeric: tabular-nums; }
 
+/* live chart */
+.chart-card { padding: 12px 12px 8px; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.chart-now { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.seg.sm { padding: 3px; }
+.seg.sm .seg-btn { padding: 6px 10px; font-size: 12px; }
+.chart { width: 100%; height: 120px; display: block; }
+.chart-base { stroke: var(--muted); stroke-width: 0.5; stroke-dasharray: 2 2; opacity: .5; vector-effect: non-scaling-stroke; }
+
 /* readiness banner */
 .readiness { font-size: 13px; font-weight: 600; line-height: 1.45; border-radius: 12px; padding: 11px 13px; margin-bottom: 14px; border: 1px solid var(--border); }
 .readiness.building { color: var(--muted); background: var(--bg-elev); }

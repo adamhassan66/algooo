@@ -94,9 +94,10 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   genuinely profitable configs — losing scalps stay amber.
 
 - **Server** (`src/server.js`) — serves `public/`, a small JSON REST API
-  (`/api/state`, `/api/config`, `/api/control`, `/api/strategies`, `/api/order`,
-  `/api/source` to swap data source, `/api/connect`/`/api/disconnect` to arm/disarm
-  a live wallet at runtime), and the SSE stream `/api/stream`. Trading is **always
+  (`/api/state`, `/api/history` for the chart series, `/api/config`, `/api/control`,
+  `/api/strategies`, `/api/order`, `/api/source` to swap data source,
+  `/api/connect`/`/api/disconnect` to arm/disarm a live wallet at runtime), and the
+  SSE stream `/api/stream`. Trading is **always
   server-side**; the dashboard is view + control only. The connect endpoint never
   echoes the key, and the key is held only in memory (not persisted, not in snapshots).
   When `PM_DASHBOARD_PIN` is set, all `/api/*` except `/api/auth` and `/api/login`
@@ -106,7 +107,9 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   in-memory) and `/api/logout` clears the session. No PIN ⇒ open (local/trusted use).
 
 - **Dashboard** (`public/`) — one `EventSource('/api/stream')` re-renders the whole
-  UI from each snapshot. Controls POST to the REST API. No framework, no bundler.
+  UI from each snapshot. Controls POST to the REST API. No framework, no bundler. The
+  live chart is hand-drawn inline SVG (no chart lib): seeded once from `/api/history`,
+  then each snapshot appends a point; toggles between equity and realized-PnL series.
 
 ## Conventions & constraints worth knowing
 

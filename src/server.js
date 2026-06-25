@@ -182,6 +182,7 @@ async function main() {
 
     // --- REST API ---
     if (url === '/api/state' && req.method === 'GET') return sendJson(res, 200, bot.snapshot());
+    if (url === '/api/history' && req.method === 'GET') return sendJson(res, 200, bot.history);
     if (url === '/api/config' && req.method === 'GET') {
       return sendJson(res, 200, {
         source: feed.sourceKind, running: bot.running, mode: bot.mode,

@@ -28,6 +28,7 @@ class TradingBot extends EventEmitter {
     this.running = false;
     this.enabled = { ...config.strategies };
     this.signalsLog = []; // recent signals (executed or rejected), newest first
+    this.history = []; // time series for the dashboard chart: { t, e (equity), r (realized) }
 
     this.takeProfit = new TakeProfitStrategy();
     this.arb = new ArbitrageStrategy();
@@ -153,7 +154,15 @@ class TradingBot extends EventEmitter {
       for (const s of signals) await this._run(s);
     }
     await this._maybeSync(); // reconcile live state (no-op in paper mode)
+    this._recordHistory();
     this.emit('update', this.snapshot());
+  }
+
+  // Append one equity/realized-PnL sample for the live chart (capped ring buffer).
+  _recordHistory() {
+    const v = this.portfolio.valuation(this._marketsById());
+    this.history.push({ t: Date.now(), e: +v.equity.toFixed(4), r: +v.realizedPnl.toFixed(4) });
+    if (this.history.length > 600) this.history.shift();
   }
 
   // Throttled on-chain reconciliation. Runs even while paused so the dashboard

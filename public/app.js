@@ -48,6 +48,8 @@ function render(s) {
 
   renderStrategies(s.enabled);
   renderReadiness(s.performance, s.source);
+  pushChartPoint(s);
+  drawChart(s.account.startingBalance);
   renderStats(s.account);
   renderMarkets(s.markets);
   renderPositions(s.positions);
@@ -78,6 +80,61 @@ function renderStrategies(enabled) {
     .map(([k, v]) => `<button class="strat-toggle ${v ? 'on' : ''}" data-strat="${k}">${labels[k] || k}</button>`)
     .join('');
 }
+
+/* ---- live chart ---- */
+let chartData = []; // [{ t, e, r }]
+let chartMetric = 'equity';
+
+function pushChartPoint(s) {
+  const last = chartData[chartData.length - 1];
+  if (last && last.t === s.ts) return;
+  chartData.push({ t: s.ts, e: s.account.equity, r: s.account.realizedPnl });
+  if (chartData.length > 600) chartData.shift();
+}
+
+function drawChart(startingBalance) {
+  const svg = $('#chart');
+  const W = 100, H = 36;
+  const realized = chartMetric === 'realized';
+  const vals = chartData.map((p) => (realized ? p.r : p.e));
+  const baseline = realized ? 0 : startingBalance;
+
+  if (vals.length < 2) { svg.innerHTML = ''; $('#chartNow').textContent = ''; return; }
+
+  let min = Math.min(...vals, baseline);
+  let max = Math.max(...vals, baseline);
+  if (max - min < 1e-6) { max += 0.5; min -= 0.5; }
+  const pad = (max - min) * 0.1; min -= pad; max += pad;
+
+  const x = (i) => (i / (vals.length - 1)) * W;
+  const y = (v) => H - ((v - min) / (max - min)) * H;
+  const pts = vals.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`);
+  const line = `M${pts.join(' L')}`;
+  const area = `M${x(0).toFixed(2)},${H} L${pts.join(' L')} L${x(vals.length - 1).toFixed(2)},${H} Z`;
+  const cur = vals[vals.length - 1];
+  const up = cur >= baseline;
+  const stroke = up ? 'var(--green)' : 'var(--red)';
+  const fill = up ? 'rgba(46,204,113,.13)' : 'rgba(255,84,112,.13)';
+  const by = y(baseline).toFixed(2);
+
+  svg.innerHTML =
+    `<line class="chart-base" x1="0" y1="${by}" x2="100" y2="${by}"></line>` +
+    `<path d="${area}" fill="${fill}" stroke="none"></path>` +
+    `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>`;
+
+  const delta = cur - baseline;
+  $('#chartNow').innerHTML = realized
+    ? `<span class="${cls(cur)}">${signed(cur)}</span>`
+    : `${usd(cur)} <span class="${cls(delta)}">${signed(delta)}</span>`;
+}
+
+$('#chartSeg').onclick = (e) => {
+  const b = e.target.closest('.seg-btn');
+  if (!b) return;
+  chartMetric = b.dataset.metric;
+  document.querySelectorAll('#chartSeg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+  if (state) drawChart(state.account.startingBalance);
+};
 
 function renderReadiness(p, source) {
   if (!p) return;
@@ -338,7 +395,7 @@ async function unlock() {
   if (r.ok) {
     $('#lockError').textContent = ''; $('#pinInput').value = '';
     clearInterval(lockoutTimer); $('#unlockBtn').disabled = false;
-    hideLock(); connect();
+    hideLock(); await seedChart(); connect();
   } else if (r.retryAfter) {
     $('#pinInput').value = '';
     startLockout(r.retryAfter);
@@ -356,11 +413,19 @@ $('#logoutBtn').onclick = async () => {
   showLock();
 };
 
+async function seedChart() {
+  const hist = await fetch('/api/history').then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  if (Array.isArray(hist) && hist.length) {
+    chartData = hist.map((p) => ({ t: p.t, e: p.e, r: p.r }));
+  }
+}
+
 async function init() {
   const a = await fetch('/api/auth').then((r) => r.json()).catch(() => ({ required: false, authed: true }));
   authRequired = !!a.required;
   $('#sessionCard').style.display = authRequired ? 'block' : 'none';
-  if (a.required && !a.authed) showLock();
-  else connect();
+  if (a.required && !a.authed) { showLock(); return; }
+  await seedChart();
+  connect();
 }
 init();

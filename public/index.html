@@ -32,6 +32,18 @@
 
     <div class="liveinfo" id="liveinfo"></div>
     <div class="readiness" id="readiness"></div>
+
+    <div class="card chart-card">
+      <div class="chart-head">
+        <div class="seg sm" id="chartSeg">
+          <button class="seg-btn active" data-metric="equity">Equity</button>
+          <button class="seg-btn" data-metric="realized">Realized PnL</button>
+        </div>
+        <div class="chart-now" id="chartNow"></div>
+      </div>
+      <svg id="chart" class="chart" viewBox="0 0 100 36" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
     <section class="stats" id="stats"></section>
 
     <nav class="tabs">

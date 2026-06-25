@@ -24,6 +24,22 @@ to the Home Screen. (Free tier sleeps after ~15 min idle and cold-starts in ~30s
 > public, set one — the dashboard then shows a lock screen and every API call requires
 > it. Leave it blank only on a trusted local network.
 
+## Run on Windows (double-click, no terminal)
+
+1. Install **Node.js LTS** from [nodejs.org](https://nodejs.org) (one installer).
+2. Download this repo (green **Code → Download ZIP** on GitHub) and unzip it, or
+   `git clone` it.
+3. Double-click **`start.bat`**. A window opens and your browser loads the dashboard
+   at `http://localhost:3000`. Keep that window open while using the bot; close it to
+   stop.
+
+To view it on your iPhone, use the laptop's local IP on the same Wi-Fi
+(e.g. `http://192.168.1.x:3000`). Running locally connects to **real Polymarket data**
+and lets you watch your **real wallet** — neither of which works on a blocked host.
+
+Live trading is optional and off by default: double-click **`enable-live-trading.bat`**
+once to install the wallet libraries, then connect a wallet in ⚙ Settings.
+
 ## Quick start
 
 ```bash

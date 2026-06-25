@@ -36,6 +36,28 @@ test('valuation marks positions to the bid', () => {
   assert.ok(Math.abs(v.unrealizedPnl - 20) < 1e-9, 'unrealized = 100*(0.7-0.5)');
 });
 
+test('loadSnapshot reconciles cash + positions from on-chain truth', () => {
+  const p = new Portfolio(10000);
+  // a stale local position that should be replaced by the on-chain snapshot
+  p.applyFill({ market: market(), outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 10, price: 0.5 });
+
+  p.loadSnapshot({
+    cash: 250.5,
+    positions: [
+      { marketId: 'cond1', outcome: 'NO', tokenId: 't1', shares: 40, avgPrice: 0.3, curPrice: 0.45, question: 'Real market?' },
+      { marketId: 'cond2', outcome: 'YES', tokenId: 't2', shares: 0, avgPrice: 0.6 }, // zero size dropped
+    ],
+  });
+
+  assert.equal(p.cash, 250.5, 'cash replaced by real balance');
+  assert.equal(p.positions.size, 1, 'zero-size position dropped, stale local cleared');
+  // marks against curPrice when the market is not in the feed
+  const v = p.valuation(new Map());
+  assert.ok(Math.abs(v.positionsValue - 40 * 0.45) < 1e-9, 'valued at curPrice');
+  assert.ok(Math.abs(v.unrealizedPnl - 40 * (0.45 - 0.3)) < 1e-9, 'unrealized from on-chain avg');
+  assert.equal(v.positions[0].question, 'Real market?', 'carries title for off-feed markets');
+});
+
 test('arbitrage fires only when YES_ask + NO_ask < 1 - edge', () => {
   const strat = new ArbitrageStrategy();
   // no arb: 0.51 + 0.51 = 1.02

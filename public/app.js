@@ -32,6 +32,16 @@ function render(s) {
   modeEl.title = live ? (s.liveAddress || 'real funds') : 'simulation';
   document.body.classList.toggle('is-live', live);
 
+  const info = $('#liveinfo');
+  if (live) {
+    const addr = s.liveAddress ? s.liveAddress.slice(0, 6) + '…' + s.liveAddress.slice(-4) : 'wallet';
+    const ago = s.liveSyncTs ? Math.max(0, Math.round((Date.now() - s.liveSyncTs) / 1000)) + 's ago' : 'never';
+    info.textContent = `● Real wallet ${addr} · on-chain synced ${ago}`;
+    info.style.display = 'block';
+  } else {
+    info.style.display = 'none';
+  }
+
   const runBtn = $('#toggleRun');
   runBtn.textContent = s.running ? 'Stop' : 'Start';
   runBtn.classList.toggle('running', s.running);

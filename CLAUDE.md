@@ -66,7 +66,12 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   failure, falls back to paper (safe default). It lazy-loads the optional deps
   (`@polymarket/clob-client` + **ethers v5** — v6 is incompatible, see below),
   derives CLOB API creds from the signer, and submits FOK marketable orders, then
-  mirrors the fill into the local portfolio for the dashboard.
+  mirrors the fill into the local portfolio for the dashboard. In live mode it also
+  **reconciles** the portfolio against on-chain truth via `syncFromChain()` (USDC
+  balance from the CLOB + positions from the Data API) — on arm, throttled by
+  `live.syncIntervalMs`, and forced after each fill. `Portfolio.loadSnapshot()` swaps
+  in that truth; the bot rebases `startingBalance` to the first synced equity so PnL
+  tracks the session. All sync is best-effort: a failure leaves the last good mirror.
 
 - **Portfolio** (`src/engine/portfolio.js`) — the virtual account: cash, positions
   keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`.

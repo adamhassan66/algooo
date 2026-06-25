@@ -79,6 +79,8 @@ const config = {
     signatureType: num('PM_SIGNATURE_TYPE', 0),
     host: process.env.PM_CLOB_HOST || 'https://clob.polymarket.com',
     chainId: num('PM_CHAIN_ID', 137),
+    // how often to reconcile the dashboard against real on-chain state
+    syncIntervalMs: num('PM_LIVE_SYNC_MS', 10000),
   },
 
   publicDir: path.join(__dirname, '..', 'public'),

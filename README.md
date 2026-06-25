@@ -79,10 +79,16 @@ To arm it:
 Safety behavior: if the deps are missing or the wallet can't be initialized, the bot
 **refuses to arm and stays in paper mode** rather than trading in an unknown state.
 
-> Caveats before you trust it with size: the dashboard account is a local mirror —
-> it does not yet reconcile against your real on-chain positions/balances; risk limits
-> are enforced on intended order size, not realized fills; and the live order path
-> should be exercised with tiny amounts first. Start small.
+In live mode the dashboard **reconciles against your real wallet**: it pulls your USDC
+balance (CLOB) and open positions (Data API) on arm, every `PM_LIVE_SYNC_MS` (default
+10s), and right after each fill — so equity, positions, and PnL reflect on-chain truth
+rather than a guess. PnL is rebased to the equity observed when the bot armed, so it
+tracks the session. The header shows the wallet and "synced Ns ago".
+
+> Caveats before you trust it with size: risk limits are enforced on intended order
+> size, not realized fills; reconciliation depends on the Data API being reachable from
+> where you host it; and the live order path should be exercised with tiny amounts
+> first. Start small.
 
 ## Configuration
 

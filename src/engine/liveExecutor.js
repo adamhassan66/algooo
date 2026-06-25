@@ -65,8 +65,54 @@ class LiveExecutor {
     );
     this.Side = clob.Side;
     this.OrderType = clob.OrderType;
+    this.AssetType = clob.AssetType;
+    this.account = live.funderAddress || this.address; // address that holds funds/positions
+    this.lastSync = null;
     this.ready = true;
     log.warn(`LIVE TRADING ARMED — wallet ${this.address} (sigType ${live.signatureType}, funder ${live.funderAddress || 'self'})`);
+  }
+
+  // Reconcile the dashboard mirror with real on-chain state: USDC balance from
+  // the CLOB and open positions from the Data API. Best-effort — on failure the
+  // last known mirror is left untouched. Returns a small status object.
+  async syncFromChain() {
+    if (!this.ready) return { ok: false, error: 'live executor not initialized' };
+    try {
+      const [positions, cash] = await Promise.all([this._fetchPositions(), this._fetchCash()]);
+      this.portfolio.loadSnapshot({ cash, positions });
+      this.lastSync = Date.now();
+      return { ok: true, positions: positions.length, cash };
+    } catch (e) {
+      log.warn('on-chain sync failed:', e.message);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  async _fetchCash() {
+    try {
+      const ba = await this.client.getBalanceAllowance({ asset_type: this.AssetType.COLLATERAL });
+      const bal = Number(ba && ba.balance);
+      return Number.isFinite(bal) ? bal / 1e6 : undefined; // USDC has 6 decimals
+    } catch (e) {
+      log.warn('balance fetch failed:', e.message);
+      return undefined; // leave mirror cash unchanged
+    }
+  }
+
+  async _fetchPositions() {
+    const url = `${config.endpoints.data}/positions?user=${this.account}&sizeThreshold=0.01&limit=500`;
+    const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`positions HTTP ${res.status}`);
+    const raw = await res.json();
+    return (Array.isArray(raw) ? raw : []).map((p) => ({
+      marketId: String(p.conditionId),
+      outcome: String(p.outcome || '').toUpperCase() === 'NO' ? 'NO' : 'YES',
+      tokenId: p.asset,
+      shares: Number(p.size) || 0,
+      avgPrice: Number(p.avgPrice) || 0,
+      curPrice: Number.isFinite(Number(p.curPrice)) ? Number(p.curPrice) : undefined,
+      question: p.title,
+    }));
   }
 
   quote(market, outcome, side) {

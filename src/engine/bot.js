@@ -23,6 +23,7 @@ class TradingBot extends EventEmitter {
     this.executor = this.paperExecutor; // swapped to live in init() when armed
     this.mode = 'paper'; // 'paper' | 'live'
     this.liveAddress = null;
+    this._lastSyncAt = 0;
     this.running = false;
     this.enabled = { ...config.strategies };
     this.signalsLog = []; // recent signals (executed or rejected), newest first
@@ -46,6 +47,7 @@ class TradingBot extends EventEmitter {
       this.executor = live;
       this.mode = 'live';
       this.liveAddress = live.address;
+      await this._sync(); // pull real balance + positions before serving
     } catch (e) {
       log.error(`LIVE TRADING NOT ARMED (${e.message}) — staying in paper mode`);
       this.mode = 'paper';
@@ -96,6 +98,7 @@ class TradingBot extends EventEmitter {
       market
     );
     this._record({ marketId, outcome, side, strategy: 'manual', reason: 'manual order' }, res);
+    if (res.ok && this.mode === 'live') await this._maybeSync(true);
     this.emit('update', this.snapshot());
     return res;
   }
@@ -111,7 +114,32 @@ class TradingBot extends EventEmitter {
       if (this.enabled.momentum) signals.push(...this.momentum.evaluate(markets, this.portfolio));
       for (const s of signals) await this._run(s);
     }
+    await this._maybeSync(); // reconcile live state (no-op in paper mode)
     this.emit('update', this.snapshot());
+  }
+
+  // Throttled on-chain reconciliation. Runs even while paused so the dashboard
+  // always reflects the real wallet. `force` bypasses the throttle (used right
+  // after a live fill).
+  async _maybeSync(force = false) {
+    if (this.mode !== 'live') return;
+    const now = Date.now();
+    if (!force && now - this._lastSyncAt < config.live.syncIntervalMs) return;
+    this._lastSyncAt = now; // set before awaiting to avoid overlapping syncs
+    await this._sync();
+  }
+
+  async _sync() {
+    if (this.mode !== 'live' || !this.executor.syncFromChain) return;
+    this._lastSyncAt = Date.now();
+    const res = await this.executor.syncFromChain();
+    // On the first successful live sync, rebase PnL to the equity observed when
+    // the bot armed, so totalPnl/return track this session against real funds
+    // rather than the (meaningless) paper starting balance.
+    if (res && res.ok && !this._liveBaselineSet) {
+      this.portfolio.startingBalance = this.portfolio.valuation(this._marketsById()).equity;
+      this._liveBaselineSet = true;
+    }
   }
 
   async _onSourceTrade(srcTrade) {
@@ -125,6 +153,7 @@ class TradingBot extends EventEmitter {
     const market = this.feed.marketById(signal.marketId);
     const res = await this.executor.execute(signal, market);
     this._record(signal, res);
+    if (res.ok && this.mode === 'live') await this._maybeSync(true);
   }
 
   _record(signal, res) {
@@ -149,6 +178,7 @@ class TradingBot extends EventEmitter {
       running: this.running,
       mode: this.mode,
       liveAddress: this.liveAddress,
+      liveSyncTs: this.mode === 'live' && this.executor ? this.executor.lastSync : null,
       source: this.feed.sourceKind,
       enabled: this.enabled,
       account: {

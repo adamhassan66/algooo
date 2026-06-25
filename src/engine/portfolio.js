@@ -69,6 +69,27 @@ class Portfolio {
     return trade;
   }
 
+  // Replace cash + positions with externally-observed truth (live mode: real
+  // USDC balance and on-chain positions). Trades/realized history are kept.
+  // Position objects may carry `question` and `curPrice` for markets that
+  // aren't in the current feed window.
+  loadSnapshot({ cash, positions }) {
+    if (typeof cash === 'number' && isFinite(cash)) this.cash = cash;
+    this.positions = new Map();
+    for (const p of positions || []) {
+      if (!(p.shares > 0)) continue;
+      this.positions.set(key(p.marketId, p.outcome), {
+        marketId: p.marketId,
+        outcome: p.outcome,
+        tokenId: p.tokenId,
+        shares: p.shares,
+        avgPrice: p.avgPrice,
+        question: p.question,
+        curPrice: p.curPrice,
+      });
+    }
+  }
+
   // Total notional currently deployed (cost basis of open positions).
   exposure() {
     let sum = 0;
@@ -83,14 +104,14 @@ class Portfolio {
     const positions = [];
     for (const p of this.positions.values()) {
       const m = marketsById.get(p.marketId);
-      const mark = m ? (p.outcome === 'YES' ? m.yesBid : m.noBid) : p.avgPrice;
+      const mark = m ? (p.outcome === 'YES' ? m.yesBid : m.noBid) : (p.curPrice != null ? p.curPrice : p.avgPrice);
       const value = p.shares * mark;
       const upnl = p.shares * (mark - p.avgPrice);
       positionsValue += value;
       unrealizedPnl += upnl;
       positions.push({
         marketId: p.marketId,
-        question: m ? m.question : p.marketId,
+        question: m ? m.question : (p.question || p.marketId),
         outcome: p.outcome,
         shares: p.shares,
         avgPrice: p.avgPrice,

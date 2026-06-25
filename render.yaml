@@ -1,0 +1,20 @@
+# Render Blueprint — one-click deploy of the PolyBot dashboard.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: polybot
+    runtime: node
+    plan: free
+    branch: claude/claude-md-docs-jv9dmi
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Free tier has no outbound access to Polymarket in some regions; the bot
+      # falls back to the mock simulator automatically. Set to "false" to force
+      # live data where the APIs are reachable.
+      - key: PM_FORCE_MOCK
+        value: "false"

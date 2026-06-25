@@ -12,6 +12,14 @@ a strategy, you have a clean, tested engine to build on.
 > research/learning tool. Trading prediction markets carries risk; nothing here is
 > financial advice.
 
+## One-click deploy (get a link you can open on your phone)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/adamhassan66/algooo/tree/claude/claude-md-docs-jv9dmi)
+
+Tap the button, sign in with GitHub, and Render builds it from `render.yaml` and
+gives you a public `https://…onrender.com` URL — open that on your iPhone and add it
+to the Home Screen. (Free tier sleeps after ~15 min idle and cold-starts in ~30s.)
+
 ## Quick start
 
 ```bash

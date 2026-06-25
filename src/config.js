@@ -1,0 +1,83 @@
+'use strict';
+
+// Loads a .env file (if present) into process.env, then exposes typed config.
+// Intentionally dependency-free: a tiny parser is enough for KEY=VALUE lines.
+const fs = require('fs');
+const path = require('path');
+
+(function loadDotEnv() {
+  const file = path.join(__dirname, '..', '.env');
+  if (!fs.existsSync(file)) return;
+  for (const raw of fs.readFileSync(file, 'utf8').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+})();
+
+const num = (name, def) => {
+  const v = process.env[name];
+  if (v === undefined || v === '') return def;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+};
+const bool = (name, def) => {
+  const v = process.env[name];
+  if (v === undefined || v === '') return def;
+  return /^(1|true|yes|on)$/i.test(v);
+};
+const list = (name, def) => {
+  const v = process.env[name];
+  if (!v) return def;
+  return v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+};
+
+const config = {
+  port: num('PORT', 3000),
+  forceMock: bool('PM_FORCE_MOCK', false),
+
+  // paper account
+  startingBalance: num('PM_STARTING_BALANCE', 10000),
+  slippageBps: num('PM_SLIPPAGE_BPS', 50),
+  takerFeeBps: num('PM_TAKER_FEE_BPS', 0),
+  tickMs: Math.max(250, num('PM_TICK_MS', 1500)),
+
+  // risk
+  orderSizeUsd: num('PM_ORDER_SIZE_USD', 200),
+  maxPositionUsd: num('PM_MAX_POSITION_USD', 1000),
+  maxExposureUsd: num('PM_MAX_EXPOSURE_USD', 8000),
+
+  // strategies
+  strategies: {
+    arbitrage: bool('PM_STRAT_ARB', true),
+    momentum: bool('PM_STRAT_MOMENTUM', true),
+    copyTrade: bool('PM_STRAT_COPY', true),
+  },
+  arbEdge: num('PM_ARB_EDGE', 0.02),
+  momentumWindowMs: num('PM_MOMENTUM_WINDOW_MS', 8000),
+  momentumThreshold: num('PM_MOMENTUM_THRESHOLD', 0.03),
+
+  // copy trading
+  copyWallets: list('PM_COPY_WALLETS', []),
+  copyTopN: num('PM_COPY_TOP_N', 3),
+  copyScale: num('PM_COPY_SCALE', 0.02),
+
+  publicDir: path.join(__dirname, '..', 'public'),
+
+  // Polymarket public API endpoints (used when reachable)
+  endpoints: {
+    gamma: 'https://gamma-api.polymarket.com',
+    clob: 'https://clob.polymarket.com',
+    data: 'https://data-api.polymarket.com',
+    leaderboard: 'https://lb-api.polymarket.com',
+  },
+};
+
+module.exports = config;

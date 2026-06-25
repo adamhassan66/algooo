@@ -1,0 +1,47 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { Portfolio } = require('../src/engine/portfolio');
+const { ArbitrageStrategy } = require('../src/engine/strategies/arbitrage');
+
+const market = (over = {}) => ({
+  id: 'm1', question: 'Q?', yesTokenId: 'm1_YES', noTokenId: 'm1_NO',
+  yesBid: 0.49, yesAsk: 0.51, noBid: 0.49, noAsk: 0.51, ...over,
+});
+
+test('BUY then SELL realizes PnL and frees cash', () => {
+  const p = new Portfolio(1000);
+  const m = market();
+  p.applyFill({ market: m, outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 100, price: 0.5 });
+  assert.equal(p.cash, 950);
+  assert.equal(p.position('m1', 'YES').shares, 100);
+
+  // sell at a higher price
+  p.applyFill({ market: m, outcome: 'YES', tokenId: 'm1_YES', side: 'SELL', shares: 100, price: 0.6 });
+  assert.ok(!p.position('m1', 'YES'), 'position closed');
+  assert.ok(Math.abs(p.realizedPnl - 10) < 1e-9, 'realized +$10');
+});
+
+test('cannot BUY without cash', () => {
+  const p = new Portfolio(10);
+  assert.throws(() => p.applyFill({ market: market(), outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 100, price: 0.5 }));
+});
+
+test('valuation marks positions to the bid', () => {
+  const p = new Portfolio(1000);
+  const m = market({ yesBid: 0.7 });
+  p.applyFill({ market: m, outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 100, price: 0.5 });
+  const v = p.valuation(new Map([['m1', m]]));
+  assert.ok(Math.abs(v.unrealizedPnl - 20) < 1e-9, 'unrealized = 100*(0.7-0.5)');
+});
+
+test('arbitrage fires only when YES_ask + NO_ask < 1 - edge', () => {
+  const strat = new ArbitrageStrategy();
+  // no arb: 0.51 + 0.51 = 1.02
+  assert.equal(strat.evaluate([market()]).length, 0);
+  // arb: 0.45 + 0.45 = 0.90 -> edge 0.10
+  const sigs = strat.evaluate([market({ yesAsk: 0.45, noAsk: 0.45 })]);
+  assert.equal(sigs.length, 2, 'buys both legs');
+  assert.deepEqual(sigs.map((s) => s.outcome).sort(), ['NO', 'YES']);
+});

@@ -2,22 +2,85 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Overview
+## What this is
 
-This is a small JavaScript scratchpad of algorithm exercises. There is no build system, package manager, test framework, or dependencies — it is plain Node.js scripts run directly.
+PolyBot — a **Polymarket paper-trading bot**. It runs automated strategies against
+Polymarket prices using a virtual balance (no wallet keys, no real funds) and
+serves a mobile-first live dashboard you open from a phone browser. The whole
+thing is **zero-dependency Node.js** (built-in `http` + Server-Sent Events); there
+is no build step and nothing to `npm install`.
 
-## Running
-
-Each file is a self-contained script with inline `console.log` calls that act as both examples and ad-hoc tests:
+## Commands
 
 ```bash
-node algo.js
+npm start          # run the bot + dashboard on http://localhost:3000
+npm run dev        # same, with --watch auto-reload
+npm test           # node --test (unit tests in test/)
+node --test test/engine.test.js   # run a single test file
 ```
 
-There is no `npm install`, lint step, or test runner. To "test" a function, run the file and compare the logged output against the expected results noted in the comments above each `console.log`.
+Configure via a `.env` file (auto-loaded by `src/config.js`); see `.env.example`
+for every key. Useful overrides: `PM_FORCE_MOCK=true` to force the mock feed,
+`PM_TICK_MS` to speed up/slow down evaluation, `PM_STRAT_*` to toggle strategies.
 
-## Conventions
+## Architecture
 
-- Each exercise file states the problem in a top-of-file block comment, implements a single solution function (arrow function, `const`), then exercises it with `console.log` calls annotated with the expected return value (e.g. `// should return [0]`).
-- Style is informal: no semicolon discipline, 2-space indentation, descriptive inline comments explaining the algorithm step by step.
-- When adding a new exercise, follow the same shape — problem statement comment, solution function, then example calls with expected-output comments.
+Data flows in one direction: **feed → bot → portfolio → snapshot → dashboard**.
+
+- **Market feed** (`src/polymarket/feed.js`) — an `EventEmitter` that, on each
+  `tickMs` interval, emits a `markets` snapshot and `sourceTrade` events. It picks
+  a source at startup and **auto-falls back to mock**:
+  - `client.js` (`LiveSource`) — read-only calls to Polymarket's public REST APIs
+    (Gamma markets, CLOB order books, leaderboard, wallet activity). Never signs or
+    submits orders.
+  - `mock.js` (`MockSource`) — random-walking binary markets, injected arbitrage
+    windows, a fake leaderboard, and simulated tracked-wallet trades.
+  Both implement the **same interface** (`loadMarkets`, `tick`, `loadLeaderboard`,
+  `pollSourceTrades`) so the rest of the system is source-agnostic. In environments
+  without network access to Polymarket, the live source throws on startup and the
+  feed transparently uses mock — this is the normal local-dev path.
+
+- **Bot** (`src/engine/bot.js`) — orchestrator. Subscribes to the feed; on each
+  `markets` tick runs the enabled **price strategies**, and on each `sourceTrade`
+  runs the **copy strategy**. Routes every resulting signal through the executor,
+  logs it, and emits an `update` carrying a full `snapshot()` (account, positions,
+  trades, signals, markets, leaderboard) — that snapshot is the single contract
+  with the frontend.
+
+- **Strategies** (`src/engine/strategies/`) — each returns/produces *signals*, never
+  touching the portfolio directly:
+  - `arbitrage.js` — buys both YES+NO when `yesAsk + noAsk < 1 - arbEdge`
+    (guaranteed $1 redemption = risk-free edge; the speed play).
+  - `momentum.js` — rolling YES-midpoint window; fast up-move buys YES, fast
+    down-move buys NO.
+  - `copyTrade.js` — event-driven (`fromSourceTrade`), mirrors tracked-wallet
+    trades scaled by `copyScale`.
+
+- **Executor** (`src/engine/executor.js`) — turns a signal into a simulated fill:
+  crosses the book, applies `slippageBps`/`takerFeeBps`, enforces risk limits
+  (`maxPositionUsd`, `maxExposureUsd`), then calls `portfolio.applyFill`.
+
+- **Portfolio** (`src/engine/portfolio.js`) — the virtual account: cash, positions
+  keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`.
+
+- **Server** (`src/server.js`) — serves `public/`, a small JSON REST API
+  (`/api/state`, `/api/config`, `/api/control`, `/api/strategies`, `/api/order`),
+  and the SSE stream `/api/stream`. Trading is **always server-side**; the dashboard
+  is view + control only.
+
+- **Dashboard** (`public/`) — one `EventSource('/api/stream')` re-renders the whole
+  UI from each snapshot. Controls POST to the REST API. No framework, no bundler.
+
+## Conventions & constraints worth knowing
+
+- **No shorting.** Polymarket binary markets have none, and the model mirrors that:
+  `BUY` opens/increases a position; `SELL` only reduces a position you already hold.
+  To express downside, strategies **buy the opposite outcome** (buy NO instead of
+  shorting YES) — see `momentum.js`.
+- **The snapshot is the API contract.** When you add a field the UI needs, add it to
+  `bot.snapshot()`; the frontend reads only from there.
+- **Keep it dependency-free.** Prefer Node built-ins and SSE over adding packages or
+  a WebSocket library; the "runs anywhere with no install" property is intentional.
+- Prices are probabilities in `(0,1)`; the UI displays them as cents (`¢`).
+- CommonJS throughout (`require`/`module.exports`), `'use strict'` at the top of each
+  module.

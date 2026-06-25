@@ -44,16 +44,19 @@ modules. Run the tests with `npm test`.
   reachable from where you're running it, it transparently switches to a realistic
   **mock market simulator** so everything still runs end-to-end.
 - **Strategies** (toggle each from the dashboard):
-  - **Take-Profit** — the scalping exit: closes a position as soon as it's up ~5% and
-    cuts losers at ~20%, so a small balance is recycled into many fast small gains.
-  - **Arbitrage** — when YES and NO can be bought for less than $1 combined, buys both
-    legs for a risk-free edge.
-  - **Momentum** — rides fast short-window price moves.
-  - **Copy-trading** — mirrors the trades of top-PnL wallets from the leaderboard (or
-    wallets you specify), scaled to your account.
+  - **Market-Make** — posts passive quotes and *earns* the spread (buy the bid, sell
+    the ask). The realistic engine for small, consistent gains. **On by default.**
+  - **Arbitrage** — buys YES+NO when they cost < $1 combined for a risk-free edge; a
+    matched pair is valued at its guaranteed $1, so the edge is locked instantly.
+  - **Copy-trading** — mirrors top-PnL wallets from the leaderboard (or wallets you
+    specify), scaled to your account.
+  - **Take-Profit** — exit rule: locks small gains and cuts losers (stop-loss).
+  - **Momentum** — rides short-window moves. **Off by default**: as a taker it just
+    pays the spread with no edge and loses on choppy markets.
 
-  Defaults are set for a **small, fast-gains** account: starts with **$10**, ~$2 per
-  order, take-profit at +5%, stop-loss at -20%. Scale up via the `PM_*` env vars.
+  Why this wins: a taker pays the spread on every round trip, so momentum scalping is
+  negative-EV. Market-making and arbitrage flip that — you earn the spread / lock a
+  risk-free edge. Defaults: **$10** start, ~$2 orders, market-make + arb + copy on.
 - **Risk controls** — per-market and total exposure caps, configurable order size,
   modelled slippage and fees.
 - **Dashboard** — live equity & PnL, open positions, fills, the signal log, the

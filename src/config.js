@@ -61,14 +61,19 @@ const config = {
   maxPositionUsd: num('PM_MAX_POSITION_USD', 4),
   maxExposureUsd: num('PM_MAX_EXPOSURE_USD', 10),
 
-  // strategies
+  // strategies — defaults favour the genuine edges (spread capture + arb + copy).
+  // Momentum is off by default: scalping noise just pays the spread and loses.
   strategies: {
     takeProfit: bool('PM_STRAT_TAKE_PROFIT', true),
+    marketMaker: bool('PM_STRAT_MARKET_MAKER', true),
     arbitrage: bool('PM_STRAT_ARB', true),
-    momentum: bool('PM_STRAT_MOMENTUM', true),
     copyTrade: bool('PM_STRAT_COPY', true),
+    momentum: bool('PM_STRAT_MOMENTUM', false),
   },
   arbEdge: num('PM_ARB_EDGE', 0.02),
+
+  // market making: quote only when the spread is worth capturing
+  mmMinSpread: num('PM_MM_MIN_SPREAD', 0.01), // 1¢ minimum spread to quote
   momentumWindowMs: num('PM_MOMENTUM_WINDOW_MS', 4000), // short window = fast signals
   momentumThreshold: num('PM_MOMENTUM_THRESHOLD', 0.02), // enter on smaller moves
 

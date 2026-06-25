@@ -100,6 +100,28 @@ test('readiness gate: insufficient -> not_ready (losing) -> ready (winning)', ()
   assert.equal(perf.readiness, 'ready');
 });
 
+test('arb hedge: a matched YES+NO pair is valued at $1 (locked edge)', () => {
+  const p = new Portfolio(10);
+  const m = market({ yesBid: 0.46, yesAsk: 0.48, noBid: 0.46, noAsk: 0.48 });
+  // buy the pair for 0.48 + 0.48 = 0.96 -> guaranteed $1 at resolution
+  p.applyFill({ market: m, outcome: 'YES', tokenId: 'm1_YES', side: 'BUY', shares: 10, price: 0.48 });
+  p.applyFill({ market: m, outcome: 'NO', tokenId: 'm1_NO', side: 'BUY', shares: 10, price: 0.48 });
+  const v = p.valuation(new Map([['m1', m]]));
+  // 10 pairs worth $1 each = $10 of position value, vs 9.60 cost => +$0.40 edge
+  assert.ok(Math.abs(v.positionsValue - 10) < 1e-6, `pair value ${v.positionsValue}`);
+  assert.ok(Math.abs(v.unrealizedPnl - 0.4) < 1e-6, `locked edge ${v.unrealizedPnl}`);
+});
+
+test('maker fills at the resting price with no slippage', () => {
+  const { Executor } = require('../src/engine/executor');
+  const p = new Portfolio(10);
+  const ex = new Executor(p);
+  const m = market({ yesBid: 0.4, yesAsk: 0.45 });
+  const res = ex.execute({ marketId: 'm1', outcome: 'YES', side: 'BUY', maker: true, price: 0.4, sizeUsd: 2 }, m);
+  assert.ok(res.ok);
+  assert.equal(res.trade.price, 0.4); // exactly the bid, no slippage markup
+});
+
 test('arbitrage fires only when YES_ask + NO_ask < 1 - edge', () => {
   const strat = new ArbitrageStrategy();
   // no arb: 0.51 + 0.51 = 1.02

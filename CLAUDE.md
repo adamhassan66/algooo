@@ -54,9 +54,17 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
     tick so gains are realized and capital recycled before new entries. This is what
     makes the small-balance "fast gains" preset work.
   - `arbitrage.js` — buys both YES+NO when `yesAsk + noAsk < 1 - arbEdge`
-    (guaranteed $1 redemption = risk-free edge; the speed play).
+    (guaranteed $1 redemption = risk-free edge; the speed play). A matched pair is
+    valued at $1 in `portfolio.valuation()`, so the locked edge shows immediately
+    instead of looking like a loss until resolution.
+  - `marketMaker.js` — posts passive maker quotes (buy bid on a dip, sell ask on a
+    bounce) to **earn** the spread instead of paying it; the realistic "consistent
+    small gains" engine. Maker fills go through the executor with `maker:true` +
+    `price` (no slippage). Honest risk: holds losing inventory in trends, cut by the
+    take-profit stop-loss. **This is why the bot wins** — taker momentum just pays the
+    spread, so `momentum.js` is OFF by default.
   - `momentum.js` — rolling YES-midpoint window; fast up-move buys YES, fast
-    down-move buys NO.
+    down-move buys NO. Off by default (negative-EV on choppy markets).
   - `copyTrade.js` — event-driven (`fromSourceTrade`), mirrors tracked-wallet
     trades scaled by `copyScale`.
 

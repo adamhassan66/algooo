@@ -18,17 +18,24 @@ class Executor {
     this.rejected = 0;
   }
 
-  // signal: { marketId, outcome, side, sizeUsd, strategy, reason }
+  // signal: { marketId, outcome, side, sizeUsd, strategy, reason, maker?, price? }
+  // Maker signals (market-making) fill at their own resting price with no
+  // slippage — that's the point: you earn the spread instead of paying it.
   execute(signal, market) {
     if (!market) return { ok: false, error: 'unknown market' };
-    const base = quote(market, signal.outcome, signal.side);
-    if (!base || base <= 0 || base >= 1) return { ok: false, error: 'no quote' };
 
-    // Slippage worsens the price in the direction of the trade.
-    const slip = config.slippageBps / 10000;
-    const price = signal.side === 'BUY'
-      ? Math.min(0.99, base * (1 + slip))
-      : Math.max(0.01, base * (1 - slip));
+    let price;
+    if (signal.maker && signal.price > 0 && signal.price < 1) {
+      price = signal.price;
+    } else {
+      const base = quote(market, signal.outcome, signal.side);
+      if (!base || base <= 0 || base >= 1) return { ok: false, error: 'no quote' };
+      // Slippage worsens the price in the direction of the trade.
+      const slip = config.slippageBps / 10000;
+      price = signal.side === 'BUY'
+        ? Math.min(0.99, base * (1 + slip))
+        : Math.max(0.01, base * (1 - slip));
+    }
 
     const tokenId = signal.outcome === 'YES' ? market.yesTokenId : market.noTokenId;
 

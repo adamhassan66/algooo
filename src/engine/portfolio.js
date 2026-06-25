@@ -124,6 +124,22 @@ class Portfolio {
         unrealizedPnl: upnl,
       });
     }
+
+    // Arbitrage hedge bonus: a matched YES+NO pair redeems for exactly $1, so a
+    // pair is worth more than the two bids it's otherwise marked at. Credit the
+    // difference (the locked-in risk-free edge) on top of the per-leg marks.
+    for (const [marketId, m] of marketsById) {
+      const yes = this.positions.get(`${marketId}:YES`);
+      const no = this.positions.get(`${marketId}:NO`);
+      if (!yes || !no) continue;
+      const pairs = Math.min(yes.shares, no.shares);
+      if (pairs <= 0) continue;
+      const markedAt = (m.yesBid + m.noBid); // what the paired shares are marked at above
+      const bonus = pairs * (1 - markedAt); // bring paired value up to $1/pair
+      positionsValue += bonus;
+      unrealizedPnl += bonus;
+    }
+
     const equity = this.cash + positionsValue;
     return {
       cash: this.cash,

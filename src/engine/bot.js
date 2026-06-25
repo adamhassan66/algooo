@@ -14,6 +14,7 @@ const { ArbitrageStrategy } = require('./strategies/arbitrage');
 const { MomentumStrategy } = require('./strategies/momentum');
 const { CopyTradeStrategy } = require('./strategies/copyTrade');
 const { TakeProfitStrategy } = require('./strategies/takeProfit');
+const { MarketMakerStrategy } = require('./strategies/marketMaker');
 
 class TradingBot extends EventEmitter {
   constructor(feed) {
@@ -31,6 +32,7 @@ class TradingBot extends EventEmitter {
     this.history = []; // time series for the dashboard chart: { t, e (equity), r (realized) }
 
     this.takeProfit = new TakeProfitStrategy();
+    this.marketMaker = new MarketMakerStrategy();
     this.arb = new ArbitrageStrategy();
     this.momentum = new MomentumStrategy();
     this.copy = new CopyTradeStrategy();
@@ -150,6 +152,7 @@ class TradingBot extends EventEmitter {
       // Exits first, to realize gains and free capital before new entries.
       if (this.enabled.takeProfit) signals.push(...this.takeProfit.evaluate(markets, this.portfolio));
       if (this.enabled.arbitrage) signals.push(...this.arb.evaluate(markets, this.portfolio));
+      if (this.enabled.marketMaker) signals.push(...this.marketMaker.evaluate(markets, this.portfolio));
       if (this.enabled.momentum) signals.push(...this.momentum.evaluate(markets, this.portfolio));
       for (const s of signals) await this._run(s);
     }

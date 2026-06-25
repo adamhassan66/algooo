@@ -75,7 +75,7 @@ function renderSettings(s) {
 }
 
 function renderStrategies(enabled) {
-  const labels = { takeProfit: 'Take-Profit', arbitrage: 'Arb', momentum: 'Momentum', copyTrade: 'Copy' };
+  const labels = { takeProfit: 'Take-Profit', marketMaker: 'Market-Make', arbitrage: 'Arb', momentum: 'Momentum', copyTrade: 'Copy' };
   $('#strategies').innerHTML = Object.entries(enabled)
     .map(([k, v]) => `<button class="strat-toggle ${v ? 'on' : ''}" data-strat="${k}">${labels[k] || k}</button>`)
     .join('');

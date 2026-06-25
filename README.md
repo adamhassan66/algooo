@@ -57,24 +57,30 @@ PolyBot ships **ready to connect to a real Polymarket wallet**, but live trading
 path authenticates your wallet, derives CLOB API credentials, and submits signed
 marketable (FOK) orders via Polymarket's official client.
 
-To arm it:
+**The easy way — connect from the dashboard.** Open the **⚙ Settings** tab and:
 
-1. **Install the live deps** (kept optional so the paper bot stays zero-install):
-   ```bash
-   npm install @polymarket/clob-client ethers
-   ```
-   > Uses **ethers v5** — `@polymarket/clob-client` is not compatible with ethers v6.
-2. In the Polymarket app, **deposit USDC on Polygon** and approve trading (this sets
-   the on-chain allowances the bot relies on).
-3. Set these (ideally via your host's secret manager, **not** a committed file):
-   ```bash
-   PM_LIVE_TRADING=true
-   PM_PRIVATE_KEY=0x...        # the EOA key that controls your account
-   PM_FUNDER_ADDRESS=0x...     # your Polymarket proxy/safe address (if applicable)
-   PM_SIGNATURE_TYPE=1         # 0=EOA, 1=Polymarket proxy, 2=Gnosis safe
-   ```
-4. Start the app. In live mode the bot **does not auto-start** — the dashboard shows a
-   red **LIVE** badge and you must press **Start** to begin trading real funds.
+1. (one-time) install the live deps so the bot can sign orders:
+   `npm install @polymarket/clob-client ethers` (uses **ethers v5** — v6 is incompatible).
+2. Under **Data source**, pick **Live** for real Polymarket prices.
+3. Under **Wallet**, paste your private key, set your account type, and tap **Connect**.
+
+That arms live trading at runtime — no env vars, no redeploy. You can switch the data
+source between **Live / Mock / Auto** and **Connect / Disconnect** the wallet anytime;
+the key is held in server memory for the session only and never written to disk.
+
+**The headless way — env vars** (for hosted/auto-start setups). Set these (ideally via
+your host's secret manager, **not** a committed file) and the bot arms on boot:
+
+```bash
+PM_LIVE_TRADING=true
+PM_PRIVATE_KEY=0x...        # the EOA key that controls your account
+PM_FUNDER_ADDRESS=0x...     # your Polymarket proxy/safe address (if applicable)
+PM_SIGNATURE_TYPE=1         # 0=EOA, 1=Polymarket proxy, 2=Gnosis safe
+```
+
+Either way: deposit USDC on Polygon and approve trading in the Polymarket app first (sets
+the on-chain allowances), and in live mode the bot **does not auto-start** — the dashboard
+shows a red **LIVE** badge and you must press **Start** to begin trading real funds.
 
 Safety behavior: if the deps are missing or the wallet can't be initialized, the bot
 **refuses to arm and stays in paper mode** rather than trading in an unknown state.

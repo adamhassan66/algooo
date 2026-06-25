@@ -52,6 +52,23 @@ function render(s) {
   renderPositions(s.positions);
   renderActivity(s.trades, s.signals);
   renderCopy(s.leaderboard, s.copyWallets);
+  renderSettings(s);
+}
+
+function renderSettings(s) {
+  // Reflect current source + connection without touching the input fields.
+  document.querySelectorAll('#sourceSeg .seg-btn').forEach((b) =>
+    b.classList.toggle('active', b.dataset.source === s.source));
+  $('#sourceStatus').textContent = `Currently: ${s.source}` +
+    (s.mode === 'live' && s.source === 'mock' ? ' — ⚠ trading live against simulated prices' : '');
+
+  const live = s.mode === 'live';
+  $('#connStatus').textContent = live
+    ? `Connected: ${s.liveAddress} (live)`
+    : 'Not connected (paper mode)';
+  $('#connStatus').className = 'sub ' + (live ? 'neg' : '');
+  $('#connectForm').style.display = live ? 'none' : 'block';
+  $('#disconnectBtn').style.display = live ? 'block' : 'none';
 }
 
 function renderStrategies(enabled) {
@@ -176,9 +193,37 @@ document.addEventListener('click', (e) => {
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + tab.dataset.tab));
     return;
   }
+  const srcBtn = e.target.closest('#sourceSeg .seg-btn');
+  if (srcBtn) {
+    toast(`Switching to ${srcBtn.dataset.source}…`);
+    post('/api/source', { source: srcBtn.dataset.source }).then((r) => {
+      if (!r.ok) toast(`Source: ${r.error || 'switch failed'}`);
+    });
+    return;
+  }
   const quote = e.target.closest('.quote');
   if (quote) openSheet(quote.dataset.mkt, quote.dataset.outcome);
 });
+
+$('#connectBtn').onclick = async () => {
+  const privateKey = $('#pkInput').value.trim();
+  if (!privateKey) return toast('Enter a private key');
+  $('#connectBtn').textContent = 'Connecting…';
+  const res = await post('/api/connect', {
+    privateKey,
+    funderAddress: $('#funderInput').value.trim(),
+    signatureType: $('#sigInput').value,
+  });
+  $('#pkInput').value = ''; // clear from the DOM immediately
+  $('#connectBtn').textContent = 'Connect wallet';
+  toast(res.ok ? `Connected ${res.address.slice(0, 6)}…` : `Connect failed: ${res.error}`);
+};
+
+$('#disconnectBtn').onclick = async () => {
+  if (!confirm('Disconnect wallet and return to paper mode?')) return;
+  await post('/api/disconnect', {});
+  toast('Disconnected — paper mode');
+};
 
 /* ---- trade sheet ---- */
 let sheet = { marketId: null, outcome: 'YES', side: 'BUY' };

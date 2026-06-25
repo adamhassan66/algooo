@@ -13,6 +13,16 @@
 const config = require('../config');
 const log = require('../util/logger');
 
+// Drop undefined/empty fields so an override only replaces values it actually
+// provides (e.g. an omitted signatureType keeps the configured default).
+function clean(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v !== undefined && v !== null && v !== '') out[k] = v;
+  }
+  return out;
+}
+
 function loadDeps() {
   // Throws a clear message if the optional packages aren't installed.
   let ethers, clob;
@@ -30,8 +40,12 @@ function loadDeps() {
 }
 
 class LiveExecutor {
-  constructor(portfolio) {
+  // `override` lets the dashboard supply credentials at runtime
+  // ({ privateKey, funderAddress, signatureType }); anything omitted falls back
+  // to the PM_* env config.
+  constructor(portfolio, override = {}) {
     this.portfolio = portfolio; // local mirror for the dashboard
+    this.override = override;
     this.client = null;
     this.ready = false;
     this.address = null;
@@ -40,8 +54,8 @@ class LiveExecutor {
   // Authenticate the wallet and derive CLOB API credentials. Throws on any
   // misconfiguration so the caller can refuse to arm live trading.
   async init() {
-    const { live } = config;
-    if (!live.privateKey) throw new Error('PM_PRIVATE_KEY is not set');
+    const live = { ...config.live, ...clean(this.override) };
+    if (!live.privateKey) throw new Error('no private key provided');
 
     const { ethers, clob } = loadDeps();
     const { ClobClient } = clob;
@@ -68,6 +82,7 @@ class LiveExecutor {
     this.AssetType = clob.AssetType;
     this.account = live.funderAddress || this.address; // address that holds funds/positions
     this.lastSync = null;
+    this.override = null; // don't retain the supplied key beyond wallet creation
     this.ready = true;
     log.warn(`LIVE TRADING ARMED — wallet ${this.address} (sigType ${live.signatureType}, funder ${live.funderAddress || 'self'})`);
   }

@@ -55,6 +55,40 @@ class TradingBot extends EventEmitter {
     }
   }
 
+  // Connect a real wallet at runtime (from the dashboard) and arm live trading.
+  // Trading stays paused after connecting — the user must press Start. On any
+  // failure the bot remains in paper mode. The key is never stored on the bot.
+  async connectLive(creds = {}) {
+    try {
+      const live = new LiveExecutor(this.portfolio, creds);
+      await live.init();
+      this.running = false; // never auto-trade on connect
+      this.executor = live;
+      this.mode = 'live';
+      this.liveAddress = live.address;
+      this._liveBaselineSet = false;
+      await this._sync();
+      this.emit('update', this.snapshot());
+      return { ok: true, mode: this.mode, address: this.liveAddress };
+    } catch (e) {
+      this.mode = 'paper';
+      this.executor = this.paperExecutor;
+      log.error(`connect failed: ${e.message}`);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  // Disconnect the wallet and return to a fresh paper account.
+  disconnectLive() {
+    this.running = false;
+    this.mode = 'paper';
+    this.liveAddress = null;
+    this._liveBaselineSet = false;
+    this.reset(); // fresh paper portfolio + paper executor
+    this.emit('update', this.snapshot());
+    return { ok: true, mode: 'paper' };
+  }
+
   start() { this.running = true; log.info(`bot started (${this.mode})`); }
   stop() { this.running = false; log.info('bot stopped'); }
 

@@ -38,12 +38,48 @@
       <button class="tab" data-tab="positions">Positions</button>
       <button class="tab" data-tab="activity">Activity</button>
       <button class="tab" data-tab="copy">Copy</button>
+      <button class="tab" data-tab="settings">⚙</button>
     </nav>
 
     <section class="panel active" id="panel-markets"></section>
     <section class="panel" id="panel-positions"></section>
     <section class="panel" id="panel-activity"></section>
     <section class="panel" id="panel-copy"></section>
+    <section class="panel" id="panel-settings">
+      <div class="card">
+        <div class="q">Data source</div>
+        <div class="sub" style="margin-bottom:10px">Live = real Polymarket prices · Mock = local simulator</div>
+        <div class="seg" id="sourceSeg">
+          <button class="seg-btn" data-source="auto">Auto</button>
+          <button class="seg-btn" data-source="live">Live</button>
+          <button class="seg-btn" data-source="mock">Mock</button>
+        </div>
+        <div class="sub" id="sourceStatus"></div>
+      </div>
+
+      <div class="card">
+        <div class="q">Wallet — live trading</div>
+        <div class="sub" id="connStatus" style="margin-bottom:10px">Not connected (paper mode)</div>
+        <div id="connectForm">
+          <label class="field">Private key
+            <input id="pkInput" type="password" autocomplete="off" placeholder="0x… (kept in memory, never saved)" />
+          </label>
+          <label class="field">Funder / proxy address (optional)
+            <input id="funderInput" type="text" autocomplete="off" placeholder="0x… your Polymarket proxy or safe" />
+          </label>
+          <label class="field">Account type
+            <select id="sigInput">
+              <option value="1">Polymarket proxy (email/Magic login)</option>
+              <option value="2">Polymarket Gnosis safe</option>
+              <option value="0">Raw EOA wallet</option>
+            </select>
+          </label>
+          <button class="btn primary block" id="connectBtn">Connect wallet</button>
+        </div>
+        <button class="btn ghost block" id="disconnectBtn" style="display:none">Disconnect</button>
+        <div class="warn">⚠ Live trading uses real funds. Only connect on a device/URL you trust — anyone with access to this dashboard can place orders once connected. Your key is held in server memory for the session and never written to disk.</div>
+      </div>
+    </section>
   </main>
 
   <!-- manual trade sheet -->

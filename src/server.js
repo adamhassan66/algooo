@@ -97,6 +97,26 @@ async function main() {
       broadcast('update', bot.snapshot());
       return sendJson(res, 200, { ok: true, enabled: bot.enabled });
     }
+    if (url === '/api/source' && req.method === 'POST') {
+      const { source } = await readBody(req);
+      if (!['live', 'mock', 'auto'].includes(source)) return sendJson(res, 400, { error: 'source must be live|mock|auto' });
+      const result = await feed.switchSource(source);
+      broadcast('update', bot.snapshot());
+      return sendJson(res, result.ok ? 200 : 400, result);
+    }
+    if (url === '/api/connect' && req.method === 'POST') {
+      const { privateKey, funderAddress, signatureType } = await readBody(req);
+      const result = await bot.connectLive({
+        privateKey,
+        funderAddress,
+        signatureType: signatureType === undefined || signatureType === '' ? undefined : Number(signatureType),
+      });
+      // Never echo the key back.
+      return sendJson(res, result.ok ? 200 : 400, result);
+    }
+    if (url === '/api/disconnect' && req.method === 'POST') {
+      return sendJson(res, 200, bot.disconnectLive());
+    }
     if (url === '/api/order' && req.method === 'POST') {
       const body = await readBody(req);
       const result = await bot.manualOrder(body);

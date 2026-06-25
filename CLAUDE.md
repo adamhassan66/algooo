@@ -77,9 +77,11 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
   keyed by `marketId:outcome`, realized PnL, and mark-to-market `valuation()`.
 
 - **Server** (`src/server.js`) — serves `public/`, a small JSON REST API
-  (`/api/state`, `/api/config`, `/api/control`, `/api/strategies`, `/api/order`),
-  and the SSE stream `/api/stream`. Trading is **always server-side**; the dashboard
-  is view + control only.
+  (`/api/state`, `/api/config`, `/api/control`, `/api/strategies`, `/api/order`,
+  `/api/source` to swap data source, `/api/connect`/`/api/disconnect` to arm/disarm
+  a live wallet at runtime), and the SSE stream `/api/stream`. Trading is **always
+  server-side**; the dashboard is view + control only. The connect endpoint never
+  echoes the key, and the key is held only in memory (not persisted, not in snapshots).
 
 - **Dashboard** (`public/`) — one `EventSource('/api/stream')` re-renders the whole
   UI from each snapshot. Controls POST to the REST API. No framework, no bundler.
@@ -102,6 +104,10 @@ Data flows in one direction: **feed → bot → portfolio → snapshot → dashb
 - **Live execution is async and gated.** The bot's execute path (`_run`, `_onMarkets`,
   `manualOrder`, `flatten`) is `await`-based so paper (sync) and live (async) share it.
   Live mode never auto-starts; the server only auto-starts in paper mode.
+- **Source and wallet are switchable at runtime.** `feed.switchSource('live'|'mock'|
+  'auto')` builds the new source before tearing down the old one (a failed switch keeps
+  the current feed). `bot.connectLive(creds)`/`disconnectLive()` swap the executor live;
+  `LiveExecutor(portfolio, override)` takes runtime creds that fall back to PM_* env.
 - Prices are probabilities in `(0,1)`; the UI displays them as cents (`¢`).
 - CommonJS throughout (`require`/`module.exports`), `'use strict'` at the top of each
   module.

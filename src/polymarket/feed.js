@@ -27,14 +27,33 @@ class MarketFeed extends EventEmitter {
   }
 
   async start() {
-    this.source = await this._selectSource();
-    this.emit('status', { source: this.source.kind });
-    this.markets = await this.source.loadMarkets();
-    this.leaderboard = await this.source.loadLeaderboard();
-    this.copyWallets = this._resolveCopyWallets();
+    const kind = config.forceMock ? 'mock' : 'auto';
+    this.source = await this._buildSource(kind);
+    await this._loadAll();
     log.info(`feed started (${this.source.kind}): ${this.markets.length} markets, copying ${this.copyWallets.length} wallets`);
+    this.emit('status', { source: this.source.kind });
     this.emit('markets', this.markets);
     this._timer = setInterval(() => this._tick(), config.tickMs);
+  }
+
+  // Swap the data source at runtime: 'live', 'mock', or 'auto' (live, else mock).
+  // Builds the new source first; only tears down the running feed once it's ready,
+  // so a failed switch leaves the current source untouched.
+  async switchSource(kind) {
+    let source;
+    try {
+      source = await this._buildSource(kind);
+    } catch (e) {
+      return { ok: false, error: e.message, source: this.sourceKind };
+    }
+    this.stop();
+    this.source = source;
+    await this._loadAll();
+    log.info(`source switched to ${this.source.kind}`);
+    this.emit('status', { source: this.source.kind });
+    this.emit('markets', this.markets);
+    this._timer = setInterval(() => this._tick(), config.tickMs);
+    return { ok: true, source: this.sourceKind };
   }
 
   stop() {
@@ -46,17 +65,22 @@ class MarketFeed extends EventEmitter {
     return this.markets.find((m) => m.id === id);
   }
 
-  async _selectSource() {
-    if (config.forceMock) {
-      log.info('PM_FORCE_MOCK set — using mock source');
-      return new MockSource();
-    }
-    const live = new LiveSource();
+  async _loadAll() {
+    this.markets = await this.source.loadMarkets();
+    this.leaderboard = await this.source.loadLeaderboard();
+    this.copyWallets = this._resolveCopyWallets();
+  }
+
+  async _buildSource(kind) {
+    if (kind === 'mock') return new MockSource();
+    // 'live' or 'auto': probe the live APIs.
     try {
+      const live = new LiveSource();
       await live.loadMarkets();
       log.info('connected to live Polymarket APIs');
-      return new LiveSource(); // fresh instance; markets are loaded again in start()
+      return live;
     } catch (e) {
+      if (kind === 'live') throw new Error(`live data unreachable: ${e.message}`);
       log.warn(`live Polymarket APIs unreachable (${e.message}); falling back to mock`);
       return new MockSource();
     }

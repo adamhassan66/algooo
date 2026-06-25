@@ -128,7 +128,8 @@ body.is-live .topbar { border-bottom-color: var(--red); box-shadow: 0 1px 0 var(
 .seg-btn { flex: 1; background: transparent; border: 0; color: var(--muted); font-weight: 600; padding: 9px; border-radius: 7px; cursor: pointer; }
 .seg-btn.active { background: var(--bg-elev2); color: var(--text); }
 .field { display: block; font-size: 12px; color: var(--muted); margin: 12px 0; }
-.field input { width: 100%; margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px; font-size: 16px; }
+.field input, .field select { width: 100%; margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px; font-size: 16px; }
+.warn { margin-top: 14px; font-size: 12px; line-height: 1.5; color: var(--muted); background: rgba(255,84,112,.08); border: 1px solid rgba(255,84,112,.25); border-radius: 10px; padding: 11px; }
 .sheet-quote { font-size: 13px; color: var(--muted); text-align: center; margin: 8px 0; }
 
 /* toast */

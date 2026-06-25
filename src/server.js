@@ -225,6 +225,11 @@ async function main() {
       // Never echo the key back.
       return sendJson(res, result.ok ? 200 : 400, result);
     }
+    if (url === '/api/watch' && req.method === 'POST') {
+      const { address } = await readBody(req);
+      const result = await bot.watchWallet(address);
+      return sendJson(res, result.ok ? 200 : 400, result);
+    }
     if (url === '/api/disconnect' && req.method === 'POST') {
       return sendJson(res, 200, bot.disconnectLive());
     }

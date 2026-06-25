@@ -71,6 +71,17 @@
       </div>
 
       <div class="card">
+        <div class="q">Wallet — view only</div>
+        <div class="sub" style="margin-bottom:10px">See your real balance & positions. No private key, cannot place trades.</div>
+        <div id="watchForm">
+          <label class="field">Wallet address
+            <input id="watchInput" type="text" autocomplete="off" placeholder="0x… your Polymarket address" />
+          </label>
+          <button class="btn primary block" id="watchBtn">Watch wallet</button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="q">Wallet — live trading</div>
         <div class="sub" id="connStatus" style="margin-bottom:10px">Not connected (paper mode)</div>
         <div id="connectForm">

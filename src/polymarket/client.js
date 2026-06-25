@@ -152,4 +152,20 @@ class LiveSource {
   }
 }
 
-module.exports = { LiveSource };
+// Public, read-only: fetch a wallet's open positions by address (no key needed).
+// Used by both live reconciliation and view-only "watch wallet" mode.
+async function fetchPositions(address) {
+  const url = `${config.endpoints.data}/positions?user=${address}&sizeThreshold=0.01&limit=500`;
+  const raw = await getJson(url);
+  return (Array.isArray(raw) ? raw : []).map((p) => ({
+    marketId: String(p.conditionId),
+    outcome: String(p.outcome || '').toUpperCase() === 'NO' ? 'NO' : 'YES',
+    tokenId: p.asset,
+    shares: numOr(p.size, 0),
+    avgPrice: numOr(p.avgPrice, 0),
+    curPrice: Number.isFinite(Number(p.curPrice)) ? Number(p.curPrice) : undefined,
+    question: p.title,
+  }));
+}
+
+module.exports = { LiveSource, fetchPositions };

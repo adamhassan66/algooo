@@ -90,6 +90,12 @@ PolyBot ships **ready to connect to a real Polymarket wallet**, but live trading
 path authenticates your wallet, derives CLOB API credentials, and submits signed
 marketable (FOK) orders via Polymarket's official client.
 
+**Just want to see your wallet first?** In **⚙ Settings → Wallet — view only**, paste your
+address and tap **Watch wallet**. It pulls your real balance and positions from
+Polymarket's public API to display them — **no private key, and it cannot place a trade.**
+The header shows a blue **WATCH** badge. This is the safe way to connect and look before
+arming anything.
+
 **The easy way — connect from the dashboard.** Open the **⚙ Settings** tab and:
 
 1. (one-time) install the live deps so the bot can sign orders:

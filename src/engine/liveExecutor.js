@@ -115,19 +115,7 @@ class LiveExecutor {
   }
 
   async _fetchPositions() {
-    const url = `${config.endpoints.data}/positions?user=${this.account}&sizeThreshold=0.01&limit=500`;
-    const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`positions HTTP ${res.status}`);
-    const raw = await res.json();
-    return (Array.isArray(raw) ? raw : []).map((p) => ({
-      marketId: String(p.conditionId),
-      outcome: String(p.outcome || '').toUpperCase() === 'NO' ? 'NO' : 'YES',
-      tokenId: p.asset,
-      shares: Number(p.size) || 0,
-      avgPrice: Number(p.avgPrice) || 0,
-      curPrice: Number.isFinite(Number(p.curPrice)) ? Number(p.curPrice) : undefined,
-      question: p.title,
-    }));
+    return require('../polymarket/client').fetchPositions(this.account);
   }
 
   quote(market, outcome, side) {

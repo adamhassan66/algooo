@@ -27,16 +27,23 @@ function render(s) {
 
   const modeEl = $('#mode');
   const live = s.mode === 'live';
-  modeEl.textContent = live ? 'LIVE' : 'PAPER';
-  modeEl.className = 'pill ' + (live ? 'live-mode' : 'paper-mode');
-  modeEl.title = live ? (s.liveAddress || 'real funds') : 'simulation';
+  const watch = s.mode === 'watch';
+  modeEl.textContent = live ? 'LIVE' : watch ? 'WATCH' : 'PAPER';
+  modeEl.className = 'pill ' + (live ? 'live-mode' : watch ? 'watch-mode' : 'paper-mode');
+  modeEl.title = live ? (s.liveAddress || 'real funds') : watch ? 'view only' : 'simulation';
   document.body.classList.toggle('is-live', live);
 
+  // Start button is meaningless in view-only watch mode.
+  $('#toggleRun').disabled = watch;
+
   const info = $('#liveinfo');
+  const addr = s.liveAddress ? s.liveAddress.slice(0, 6) + '…' + s.liveAddress.slice(-4) : 'wallet';
   if (live) {
-    const addr = s.liveAddress ? s.liveAddress.slice(0, 6) + '…' + s.liveAddress.slice(-4) : 'wallet';
     const ago = s.liveSyncTs ? Math.max(0, Math.round((Date.now() - s.liveSyncTs) / 1000)) + 's ago' : 'never';
     info.textContent = `● Real wallet ${addr} · on-chain synced ${ago}`;
+    info.style.display = 'block';
+  } else if (watch) {
+    info.textContent = `● Viewing ${addr} (read-only — not trading)`;
     info.style.display = 'block';
   } else {
     info.style.display = 'none';
@@ -66,12 +73,18 @@ function renderSettings(s) {
     (s.mode === 'live' && s.source === 'mock' ? ' — ⚠ trading live against simulated prices' : '');
 
   const live = s.mode === 'live';
+  const watch = s.mode === 'watch';
+  const connected = live || watch;
   $('#connStatus').textContent = live
-    ? `Connected: ${s.liveAddress} (live)`
-    : 'Not connected (paper mode)';
+    ? `Connected: ${s.liveAddress} (live trading)`
+    : watch
+      ? `Viewing: ${s.liveAddress} (read-only)`
+      : 'Not connected (paper mode)';
   $('#connStatus').className = 'sub ' + (live ? 'neg' : '');
-  $('#connectForm').style.display = live ? 'none' : 'block';
-  $('#disconnectBtn').style.display = live ? 'block' : 'none';
+  // Hide both connect forms once a wallet is attached; show Disconnect.
+  $('#connectForm').style.display = connected ? 'none' : 'block';
+  $('#watchForm').style.display = connected ? 'none' : 'block';
+  $('#disconnectBtn').style.display = connected ? 'block' : 'none';
 }
 
 function renderStrategies(enabled) {
@@ -295,6 +308,15 @@ $('#connectBtn').onclick = async () => {
   $('#pkInput').value = ''; // clear from the DOM immediately
   $('#connectBtn').textContent = 'Connect wallet';
   toast(res.ok ? `Connected ${res.address.slice(0, 6)}…` : `Connect failed: ${res.error}`);
+};
+
+$('#watchBtn').onclick = async () => {
+  const address = $('#watchInput').value.trim();
+  if (!address) return toast('Enter a wallet address');
+  $('#watchBtn').textContent = 'Loading…';
+  const res = await post('/api/watch', { address });
+  $('#watchBtn').textContent = 'Watch wallet';
+  toast(res.ok ? `Viewing ${res.positions} positions` : `Couldn't load: ${res.error}`);
 };
 
 $('#disconnectBtn').onclick = async () => {

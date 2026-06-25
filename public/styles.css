@@ -40,7 +40,9 @@ main { max-width: 720px; margin: 0 auto; padding: 0 14px; }
 .pill.live { color: var(--green); border-color: var(--green); }
 .pill.mock { color: var(--accent); border-color: var(--accent-dim); }
 .pill.paper-mode { color: var(--muted); }
+.pill.watch-mode { color: #fff; background: var(--accent); border-color: var(--accent); }
 .pill.live-mode { color: #fff; background: var(--red); border-color: var(--red); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 /* red top accent + ring when trading real funds */
 body.is-live .topbar { border-bottom-color: var(--red); box-shadow: 0 1px 0 var(--red); }
 .equity { text-align: right; }

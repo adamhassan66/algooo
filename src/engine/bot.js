@@ -83,6 +83,30 @@ class TradingBot extends EventEmitter {
     }
   }
 
+  // View-only: load a wallet's real positions by address (no key, cannot trade).
+  // Purely for "let me see my wallet first" before arming anything.
+  async watchWallet(address) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address || '')) {
+      return { ok: false, error: 'enter a valid 0x wallet address' };
+    }
+    try {
+      const { fetchPositions } = require('../polymarket/client');
+      const positions = await fetchPositions(address);
+      this.running = false; // never trades in watch mode
+      this.mode = 'watch';
+      this.liveAddress = address;
+      this.executor = this.paperExecutor; // unused while watching
+      this.portfolio.loadSnapshot({ cash: 0, positions });
+      // rebase so PnL isn't measured against the paper starting balance
+      this.portfolio.startingBalance = this.portfolio.valuation(this._marketsById()).equity || 0;
+      this.emit('update', this.snapshot());
+      return { ok: true, mode: 'watch', address, positions: positions.length };
+    } catch (e) {
+      log.warn(`watch failed: ${e.message}`);
+      return { ok: false, error: e.message };
+    }
+  }
+
   // Disconnect the wallet and return to a fresh paper account.
   disconnectLive() {
     this.running = false;
@@ -94,7 +118,11 @@ class TradingBot extends EventEmitter {
     return { ok: true, mode: 'paper' };
   }
 
-  start() { this.running = true; log.info(`bot started (${this.mode})`); }
+  start() {
+    if (this.mode === 'watch') { log.warn('watch mode is view-only — connect a wallet to trade'); return; }
+    this.running = true;
+    log.info(`bot started (${this.mode})`);
+  }
   stop() { this.running = false; log.info('bot stopped'); }
 
   setStrategy(name, on) {

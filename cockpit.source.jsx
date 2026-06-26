@@ -324,6 +324,63 @@ const kalshiFee = (contracts, entryCents) => {
   return Math.ceil(0.07 * contracts * p * (1 - p) * 100) / 100;
 };
 
+/* ── Scoreboard: does the strategy actually make money? ──────────────────── */
+function Scoreboard({ hist }) {
+  const [scope, setScope] = useState("all"); // all | bot
+  const arr = useMemo(() => (scope === "bot" ? hist.filter((t) => t.byBot) : hist), [hist, scope]);
+  const n = arr.length;
+  const net = +arr.reduce((a, t) => a + t.pnl, 0).toFixed(2);
+  const wins = arr.filter((t) => t.result === "win").length;
+  const rate = n ? (wins / n) * 100 : 0;
+  const fees = +arr.reduce((a, t) => a + (t.fee || 0), 0).toFixed(2);
+  const ev = n ? net / n : 0;
+  // standard error of the mean P&L — how much the EV estimate could be luck
+  const variance = n > 1 ? arr.reduce((a, t) => a + (t.pnl - ev) ** 2, 0) / (n - 1) : 0;
+  const stderr = n ? Math.sqrt(variance / n) : 0;
+  const lo = ev - 2 * stderr, hi = ev + 2 * stderr;
+
+  let v;
+  if (n < 15) v = { label: "Gathering data…", color: C.amber, note: `Let it run — need ~${Math.max(0, 15 - n)} more settled trades before any verdict.` };
+  else if (lo > 0) v = { label: "Edge looks positive ✓", color: C.green, note: "Promising — but keep running; small samples flatter winners." };
+  else if (hi < 0) v = { label: "Losing strategy ✕", color: C.red, note: "Net-negative beyond noise. This is your sign NOT to risk real money on it." };
+  else v = { label: "No real edge · ≈ break-even", color: C.sub, note: "Within noise of zero — exactly what 15-min BTC + fees predicts." };
+
+  const ScopeBtn = ({ id, label }) => (
+    <button onClick={() => setScope(id)} style={{
+      background: scope === id ? C.violet + "22" : "none", border: `1px solid ${scope === id ? C.violet : C.border}`,
+      color: scope === id ? C.violet : C.sub, fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit",
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ color: C.sub, fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>📊 PAPER-RUN SCOREBOARD</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <ScopeBtn id="all" label="All" />
+          <ScopeBtn id="bot" label="Bot only" />
+        </div>
+      </div>
+
+      <div style={{ background: v.color + "14", border: `1px solid ${v.color}44`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+        <div style={{ color: v.color, fontSize: 15, fontWeight: 900, marginBottom: 4 }}>{v.label}</div>
+        <div style={{ color: C.sub, fontSize: 12, lineHeight: 1.5 }}>{v.note}</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <Stat label="EV / TRADE" value={`${ev >= 0 ? "+" : ""}${money(ev)}`} color={ev >= 0 ? C.green : C.red} />
+        <Stat label="NET P&L" value={`${net >= 0 ? "+" : ""}${money(net)}`} color={net >= 0 ? C.green : C.red} />
+        <Stat label="WIN RATE" value={`${rate.toFixed(0)}%`} color={rate >= 50 ? C.green : C.sub} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Stat label="TRADES" value={n} />
+        <Stat label="FEES PAID" value={money(fees)} color={C.amber} />
+        <Stat label="PROJ / 100" value={`${ev >= 0 ? "+" : ""}${money(ev * 100)}`} color={ev >= 0 ? C.green : C.red} />
+      </div>
+    </div>
+  );
+}
+
 function PaperTrade({ btc }) {
   const [bal, setBal] = usePersist("kc_bal", 1000);
   const [open, setOpen] = usePersist("kc_open", []);
@@ -486,6 +543,9 @@ function PaperTrade({ btc }) {
           <Stat label="WIN RATE" value={`${rate.toFixed(0)}%`} color={rate >= 50 ? C.green : C.sub} />
         </div>
       </div>
+
+      {/* scoreboard — the "prove it" verdict */}
+      <Scoreboard hist={hist} />
 
       {/* live Kalshi market */}
       <div style={{ background: C.card, border: `1px solid ${kalshi.status === "ok" ? C.cyan + "55" : C.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>

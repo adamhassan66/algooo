@@ -267,22 +267,104 @@ function Log({ trades, setTrades, entry }) {
   );
 }
 
-/* ── Paper trading: Kalshi 15-min BTC up/down ────────────────────────────── */
+/* ── Live Kalshi 15-min BTC scan (best effort; may be CORS-blocked) ───────── */
+// Returns the nearest-to-close open BTC market, or a status. Never throws to
+// the UI — failures become {status:"blocked"|"nomarket"} so the bot/clock
+// keep working off Coinbase + the wall clock.
+async function fetchKalshiBtc() {
+  const base = "https://api.elections.kalshi.com/trade-api/v2";
+  const candidates = ["KXBTCD", "KXBTC", "KXBTCRANGE", "KXBTC15", "KXBTCMINI"];
+  let best = null, scanned = 0, reached = false;
+  for (const s of candidates) {
+    let r;
+    try { r = await fetch(`${base}/markets?series_ticker=${s}&status=open&limit=200`, { headers: { Accept: "application/json" } }); }
+    catch (e) { return { status: "blocked", msg: String(e && e.message || e) }; } // network/CORS
+    reached = true;
+    if (!r.ok) continue;
+    let ms = [];
+    try { ms = (await r.json()).markets || []; } catch { continue; }
+    for (const m of ms) {
+      scanned++;
+      const close = Date.parse(m.close_time || m.expiration_time || "");
+      if (!close || close < Date.now()) continue;
+      if (!best || close < best.close) best = { m, close };
+    }
+  }
+  if (!reached) return { status: "blocked", msg: "no response" };
+  if (!best) return { status: "nomarket", scanned };
+  const m = best.m;
+  return {
+    status: "ok",
+    market: {
+      title: m.title || m.ticker, ticker: m.ticker, closeTime: best.close,
+      upAsk: +m.yes_ask || 50, downAsk: +m.no_ask || 50,
+      strike: m.cap_strike ?? m.floor_strike ?? null,
+    },
+  };
+}
+
+/* ── Paper trading: Kalshi 15-min BTC up/down, with auto-pilot ────────────── */
+const Q = 15 * 60 * 1000; // 15-minute window
+const winEnd = (ts) => Math.floor(ts / Q) * Q + Q; // next :00/:15/:30/:45 boundary
+
 function PaperTrade({ btc }) {
   const [bal, setBal] = usePersist("kc_bal", 1000);
   const [open, setOpen] = usePersist("kc_open", []);
   const [hist, setHist] = usePersist("kc_hist", []);
+  const [auto, setAuto] = usePersist("kc_auto", false);
+  const [botStake, setBotStake] = usePersist("kc_botstake", 10);
   const [side, setSide] = useState("UP");
   const [entry, setEntry] = useState(50);
   const [stake, setStake] = useState(20);
   const [now, setNow] = useState(Date.now());
+  const [kalshi, setKalshi] = useState({ status: "idle" });
+  const [botLog, setBotLog] = useState([]);
   const btcRef = useRef(btc);
   btcRef.current = btc;
+  const priceHist = useRef([]);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
-  // Auto-settle any trade whose 15-min window has elapsed, using the latest
-  // observed BTC price. UP wins if price > entry price; DOWN wins if price < it.
+  // keep ~20 min of price samples for the momentum signal
+  useEffect(() => {
+    if (!btc) return;
+    const a = priceHist.current;
+    a.push({ t: Date.now(), p: btc });
+    while (a.length > 130) a.shift();
+  }, [btc]);
+
+  // poll the real Kalshi market (best effort)
+  useEffect(() => {
+    let live = true;
+    const run = () => fetchKalshiBtc().then((r) => { if (live) setKalshi(r); }).catch((e) => { if (live) setKalshi({ status: "blocked", msg: String(e.message || e) }); });
+    run();
+    const t = setInterval(run, 30000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+
+  // BTC change over the last ~2 minutes (the bot's signal)
+  const momentum = () => {
+    const a = priceHist.current;
+    if (!btc || a.length < 2) return 0;
+    const cutoff = Date.now() - 120000;
+    let ref = a[0];
+    for (const s of a) { if (s.t <= cutoff) ref = s; else break; }
+    return btc - ref.p;
+  };
+
+  // place a paper trade; returns false if unaffordable
+  const placeTrade = (sd, entryCents, stakeUSD, settleAt, byBot) => {
+    if (!btc) return false;
+    const contracts = Math.max(1, Math.floor(stakeUSD / (entryCents / 100)));
+    const cost = +((contracts * entryCents) / 100).toFixed(2);
+    if (cost > bal) return false;
+    const t0 = Date.now();
+    setBal((b) => +(b - cost).toFixed(2));
+    setOpen((o) => [{ id: t0 + Math.random(), side: sd, entry: entryCents, contracts, cost, p0: btc, placedAt: t0, settleAt, byBot: !!byBot }, ...o]);
+    return true;
+  };
+
+  // settle anything whose window has elapsed, using the latest price
   useEffect(() => {
     const price = btcRef.current;
     if (!price) return;
@@ -293,7 +375,7 @@ function PaperTrade({ btc }) {
       const settled = due.map((t) => {
         const tie = price === t.p0;
         const win = t.side === "UP" ? price > t.p0 : price < t.p0;
-        const payout = tie ? t.cost : win ? t.contracts : 0; // $1 per contract on win; refund on tie
+        const payout = tie ? t.cost : win ? t.contracts : 0;
         credit += payout;
         return { ...t, settlePrice: price, result: tie ? "push" : win ? "win" : "loss", pnl: +(payout - t.cost).toFixed(2) };
       });
@@ -303,18 +385,30 @@ function PaperTrade({ btc }) {
     });
   }, [now]);
 
+  // the bot: once per window, near the open, pick a side and paper-trade it.
+  // Window end = the real Kalshi close time when we have it, else the clock.
+  const settleAt = (kalshi.market && kalshi.market.closeTime > now + 60000) ? kalshi.market.closeTime : winEnd(now);
+  useEffect(() => {
+    if (!auto || !btc) return;
+    const we = settleAt;
+    if (we - now <= 60000) return;                 // too late in this window
+    if (open.some((t) => t.byBot && t.settleAt === we)) return; // already traded this window
+    const mom = momentum();
+    const sd = mom >= 0 ? "UP" : "DOWN";
+    const e = kalshi.market ? (sd === "UP" ? kalshi.market.upAsk : kalshi.market.downAsk) : entry;
+    if (placeTrade(sd, e, botStake, we, true)) {
+      const stamp = new Date(now).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      setBotLog((l) => [`${stamp} · ${sd} @ ${e}¢ — BTC ${mom >= 0 ? "+" : ""}${mom.toFixed(0)}/2m`, ...l].slice(0, 8));
+    }
+  }, [now, auto]);
+
   const contracts = Math.max(1, Math.floor(stake / (entry / 100)));
   const cost = +((contracts * entry) / 100).toFixed(2);
   const profitIfWin = +((contracts * (100 - entry)) / 100).toFixed(2);
   const canPlace = !!btc && cost <= bal;
+  const manualSettle = (kalshi.market && kalshi.market.closeTime > now + 60000) ? kalshi.market.closeTime : winEnd(now);
 
-  const place = () => {
-    if (!canPlace) return;
-    const t0 = Date.now();
-    setBal((b) => +(b - cost).toFixed(2));
-    setOpen((o) => [{ id: t0, side, entry, contracts, cost, p0: btc, placedAt: t0, settleAt: t0 + 15 * 60 * 1000 }, ...o]);
-  };
-  const reset = () => { setBal(1000); setOpen([]); setHist([]); };
+  const reset = () => { setBal(1000); setOpen([]); setHist([]); setBotLog([]); };
 
   const atRisk = open.reduce((a, t) => a + t.cost, 0);
   const realized = hist.reduce((a, t) => a + t.pnl, 0);
@@ -331,25 +425,79 @@ function PaperTrade({ btc }) {
     }}>{arrow} {label}</button>
   );
 
+  const kStatus = {
+    idle: "Connecting to Kalshi…",
+    ok: null,
+    nomarket: "Reached Kalshi, but found no open BTC market right now.",
+    blocked: "Kalshi API blocked by the browser (CORS). Bot runs on the Coinbase price + the 15-min clock instead.",
+  }[kalshi.status];
+
   return (
     <div>
-      {/* balance */}
+      {/* balance + next window */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <span style={{ color: C.sub, fontSize: 12, fontWeight: 600 }}>Mock balance</span>
           <span style={{ color: C.text, fontSize: 30, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{money(bal)}</span>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+          <Stat label="NEXT WINDOW" value={cd(settleAt - now)} color={C.cyan} />
           <Stat label="AT RISK" value={money(atRisk)} color={C.amber} />
           <Stat label="REALIZED" value={money(realized)} color={realized >= 0 ? C.green : C.red} />
           <Stat label="WIN RATE" value={`${rate.toFixed(0)}%`} color={rate >= 50 ? C.green : C.sub} />
         </div>
       </div>
 
-      {/* ticket */}
+      {/* live Kalshi market */}
+      <div style={{ background: C.card, border: `1px solid ${kalshi.status === "ok" ? C.cyan + "55" : C.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+        <div style={{ color: C.cyan, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 }}>LIVE KALSHI MARKET</div>
+        {kalshi.status === "ok" ? (
+          <div>
+            <div style={{ color: C.text, fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{kalshi.market.title}</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Stat label="UP (YES)" value={`${kalshi.market.upAsk}¢`} color={C.green} />
+              <Stat label="DOWN (NO)" value={`${kalshi.market.downAsk}¢`} color={C.red} />
+              <Stat label="CLOSES IN" value={cd(kalshi.market.closeTime - now)} color={C.cyan} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: kalshi.status === "blocked" ? C.amber : C.sub, fontSize: 12, lineHeight: 1.5 }}>{kStatus}</div>
+        )}
+      </div>
+
+      {/* auto-pilot */}
+      <div style={{ background: auto ? C.violet + "12" : C.card, border: `1px solid ${auto ? C.violet + "55" : C.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ color: auto ? C.violet : C.text, fontSize: 14, fontWeight: 800 }}>🤖 Auto-pilot</div>
+            <div style={{ color: C.dim, fontSize: 11, marginTop: 2 }}>Bot picks a side each window from 2-min BTC momentum</div>
+          </div>
+          <button onClick={() => setAuto((v) => !v)} style={{
+            width: 54, height: 30, borderRadius: 999, border: "none", cursor: "pointer",
+            background: auto ? C.violet : C.lift, position: "relative", transition: "background .15s",
+          }}>
+            <span style={{ position: "absolute", top: 3, left: auto ? 27 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+          </button>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 12 }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Bot stake / window</span>
+          <span style={{ color: C.violet, fontSize: 16, fontWeight: 800 }}>${botStake}</span>
+        </div>
+        <input type="range" min={1} max={Math.max(2, Math.min(100, Math.floor(bal)))} step={1} value={botStake} onChange={(e) => setBotStake(+e.target.value)}
+          style={{ width: "100%", accentColor: C.violet, height: 24 }} />
+        {botLog.length > 0 && (
+          <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+            {botLog.map((l, i) => (
+              <div key={i} style={{ color: i === 0 ? C.text : C.dim, fontSize: 11, fontVariantNumeric: "tabular-nums", marginBottom: 2 }}>{l}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* manual ticket */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-          <span style={{ color: C.sub, fontSize: 13, fontWeight: 600 }}>BTC 15-min · up or down</span>
+          <span style={{ color: C.sub, fontSize: 13, fontWeight: 600 }}>Manual ticket</span>
           <span style={{ color: C.amber, fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{btc ? `$${Math.round(btc).toLocaleString()}` : "price…"}</span>
         </div>
 
@@ -378,13 +526,13 @@ function PaperTrade({ btc }) {
           <Stat label="WIN PROFIT" value={`+${money(profitIfWin)}`} color={C.green} />
         </div>
 
-        <button onClick={place} disabled={!canPlace} style={{
+        <button onClick={() => placeTrade(side, entry, stake, manualSettle, false)} disabled={!canPlace} style={{
           width: "100%", padding: 15, borderRadius: 12, border: "none",
           background: canPlace ? (side === "UP" ? C.green : C.red) : C.lift,
           color: canPlace ? "#06140f" : C.dim, fontSize: 15, fontWeight: 900, fontFamily: "inherit",
           cursor: canPlace ? "pointer" : "default",
         }}>
-          {btc ? `Place ${side} · settles in 15:00` : "Waiting for BTC price…"}
+          {btc ? `Place ${side} · settles ${cd(manualSettle - now)}` : "Waiting for BTC price…"}
         </button>
         {!canPlace && btc && <div style={{ color: C.red, fontSize: 12, marginTop: 8, textAlign: "center" }}>Stake exceeds your mock balance</div>}
       </div>
@@ -403,14 +551,12 @@ function PaperTrade({ btc }) {
             return (
               <div key={t.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: col, fontSize: 14, fontWeight: 900 }}>{t.side === "UP" ? "▲" : "▼"} {t.side}</span>
+                  <span style={{ color: col, fontSize: 14, fontWeight: 900 }}>{t.side === "UP" ? "▲" : "▼"} {t.side}{t.byBot ? <span style={{ color: C.violet, fontSize: 11, fontWeight: 800 }}> 🤖</span> : null}</span>
                   <span style={{ color: C.text, fontVariantNumeric: "tabular-nums", fontSize: 14, fontWeight: 800 }}>{cd(left)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 12, color: C.sub }}>
                   <span>entry ${Math.round(t.p0).toLocaleString()} · now {btc ? `$${Math.round(btc).toLocaleString()}` : "—"}</span>
-                  <span style={{ color: stateCol, fontWeight: 800 }}>
-                    {stateLabel} {btc ? `(${delta >= 0 ? "+" : ""}${delta.toFixed(0)})` : ""}
-                  </span>
+                  <span style={{ color: stateCol, fontWeight: 800 }}>{stateLabel} {btc ? `(${delta >= 0 ? "+" : ""}${delta.toFixed(0)})` : ""}</span>
                 </div>
                 <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>{t.contracts} contracts @ {t.entry}¢ · cost {money(t.cost)} · win → +{money(+((t.contracts * (100 - t.entry)) / 100).toFixed(2))}</div>
               </div>
@@ -430,7 +576,7 @@ function PaperTrade({ btc }) {
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 13px", marginBottom: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.result === "win" ? C.green : t.result === "push" ? C.amber : C.red, flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13 }}>
-            <div style={{ color: C.text, fontWeight: 700 }}>{t.side === "UP" ? "▲" : "▼"} {t.side} · {t.result.toUpperCase()}</div>
+            <div style={{ color: C.text, fontWeight: 700 }}>{t.side === "UP" ? "▲" : "▼"} {t.side} · {t.result.toUpperCase()}{t.byBot ? " 🤖" : ""}</div>
             <div style={{ color: C.dim, fontSize: 11 }}>${Math.round(t.p0).toLocaleString()} → ${Math.round(t.settlePrice).toLocaleString()} · {t.contracts}@{t.entry}¢</div>
           </div>
           <div style={{ color: t.pnl >= 0 ? C.green : C.red, fontSize: 14, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{t.pnl >= 0 ? "+" : ""}{money(t.pnl)}</div>

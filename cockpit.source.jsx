@@ -28,6 +28,15 @@ const money = (n) =>
 const fmtBtc = (n) =>
   n == null ? "—" : "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// normal CDF (erf approx) — used to mark an open position to a fair value so
+// the bot can take profit before the window closes.
+const erf = (x) => {
+  const s = x < 0 ? -1 : 1, t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return s * y;
+};
+const ncdf = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
+
 function laTime() {
   return new Date().toLocaleTimeString("en-US", {
     timeZone: "America/Los_Angeles", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true,
@@ -334,7 +343,7 @@ function Scoreboard({ hist }) {
   const arr = useMemo(() => (scope === "bot" ? hist.filter((t) => t.byBot) : hist), [hist, scope]);
   const n = arr.length;
   const net = +arr.reduce((a, t) => a + t.pnl, 0).toFixed(2);
-  const wins = arr.filter((t) => t.result === "win").length;
+  const wins = arr.filter((t) => t.pnl > 0).length;
   const rate = n ? (wins / n) * 100 : 0;
   const fees = +arr.reduce((a, t) => a + (t.fee || 0), 0).toFixed(2);
   const ev = n ? net / n : 0;
@@ -392,6 +401,8 @@ function PaperTrade({ btc, btcDir }) {
   const [auto, setAuto] = usePersist("kc_auto", false);
   const [botStake, setBotStake] = usePersist("kc_botstake", 10);
   const [botThresh, setBotThresh] = usePersist("kc_botthresh", 0);
+  const [tp, setTp] = usePersist("kc_tp", 80); // take-profit: sell when mark >= tp cents
+  const [sl, setSl] = usePersist("kc_sl", 0);  // stop-loss: sell when mark <= sl cents (0 = off)
   const [side, setSide] = useState("UP");
   const [entry, setEntry] = useState(50);
   const [stake, setStake] = useState(20);
@@ -482,6 +493,56 @@ function PaperTrade({ btc, btcDir }) {
     });
   }, [now]);
 
+  // BTC volatility per ~second, estimated from the live feed, to mark positions
+  const sigmaPerSec = () => {
+    const a = priceHist.current;
+    if (a.length < 6) return 4;
+    let s = 0, s2 = 0, n = 0;
+    for (let i = 1; i < a.length; i++) { const d = a[i].p - a[i - 1].p; s += d; s2 += d * d; n++; }
+    return Math.max(0.5, Math.sqrt(Math.max(0, s2 / n - (s / n) ** 2)));
+  };
+  // fair value (0..1) of a position right now: P(it finishes a winner)
+  const markFor = (pos) => {
+    if (!btc) return null;
+    const tLeft = Math.max(1, (pos.settleAt - now) / 1000);
+    const sd = sigmaPerSec() * Math.sqrt(tLeft);
+    const z = (btc - pos.p0) / (sd || 1);
+    return pos.side === "UP" ? ncdf(z) : ncdf(-z);
+  };
+  // net P&L if sold right now (proceeds − cost − entry fee − sell fee)
+  const unrealized = (pos) => {
+    const m = markFor(pos);
+    if (m == null) return null;
+    const markC = Math.max(1, Math.round(m * 100));
+    return +(pos.contracts * m - pos.cost - (pos.fee || 0) - kalshiFee(pos.contracts, markC)).toFixed(2);
+  };
+  // sell an open position now, at its current mark
+  const sellNow = (pos) => {
+    const m = markFor(pos);
+    if (m == null) return;
+    const markC = Math.max(1, Math.round(m * 100));
+    const sellFee = kalshiFee(pos.contracts, markC);
+    const proceeds = +(pos.contracts * m).toFixed(2);
+    const pnl = +(proceeds - pos.cost - (pos.fee || 0) - sellFee).toFixed(2);
+    setBal((b) => +(b + proceeds - sellFee).toFixed(2));
+    setOpen((o) => o.filter((t) => t.id !== pos.id));
+    setHist((h) => [{ ...pos, settlePrice: btc, markCents: markC, result: "sold", pnl, soldAt: now }, ...h].slice(0, 60));
+  };
+
+  // take-profit / stop-loss: the bot sells before the close when a position's
+  // mark hits the target, so it doesn't have to wait out the full 15 minutes.
+  useEffect(() => {
+    if (!btc) return;
+    for (const pos of open) {
+      if (!pos.byBot) continue;
+      const m = markFor(pos);
+      if (m == null) continue;
+      const c = m * 100;
+      if (tp > 0 && c >= tp) sellNow(pos);
+      else if (sl > 0 && c <= sl) sellNow(pos);
+    }
+  }, [now]);
+
   // the bot: once per window, near the open, decide a side and paper-trade it.
   // Window end = the real Kalshi close time when we have it, else the clock.
   // With a strong-signal threshold it SKIPS windows where momentum is weak.
@@ -546,7 +607,7 @@ function PaperTrade({ btc, btcDir }) {
 
   const atRisk = open.reduce((a, t) => a + t.cost, 0);
   const realized = hist.reduce((a, t) => a + t.pnl, 0);
-  const wins = hist.filter((t) => t.result === "win").length;
+  const wins = hist.filter((t) => t.pnl > 0).length;
   const rate = hist.length ? (wins / hist.length) * 100 : 0;
   const cd = (msLeft) => { const s = Math.max(0, Math.ceil(msLeft / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
@@ -657,9 +718,27 @@ function PaperTrade({ btc, btcDir }) {
         </div>
         <input type="range" min={0} max={300} step={5} value={botThresh} onChange={(e) => setBotThresh(+e.target.value)}
           style={{ width: "100%", accentColor: C.violet, height: 24 }} />
-        <div style={{ color: C.dim, fontSize: 11, marginTop: 2 }}>
+        <div style={{ color: C.dim, fontSize: 11, marginTop: 2, marginBottom: 8 }}>
           {botThresh === 0 ? "Trades every window." : `Only trades when BTC moved >$${botThresh} in the last 2 min — tests whether being selective beats trading blind.`}
         </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Take profit · sell at</span>
+          <span style={{ color: C.green, fontSize: 16, fontWeight: 800 }}>{tp === 0 ? "off" : `${tp}¢`}</span>
+        </div>
+        <input type="range" min={0} max={99} step={1} value={tp} onChange={(e) => setTp(+e.target.value)}
+          style={{ width: "100%", accentColor: C.green, height: 24 }} />
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Stop loss · sell at</span>
+          <span style={{ color: C.red, fontSize: 16, fontWeight: 800 }}>{sl === 0 ? "off" : `${sl}¢`}</span>
+        </div>
+        <input type="range" min={0} max={49} step={1} value={sl} onChange={(e) => setSl(+e.target.value)}
+          style={{ width: "100%", accentColor: C.red, height: 24 }} />
+        <div style={{ color: C.dim, fontSize: 11, marginTop: 2 }}>
+          {tp === 0 ? "Bot holds to the close." : `Bot sells early once a position is worth ≥${tp}¢ — locking profit before the 15-min close.`}
+        </div>
+
         {botLog.length > 0 && (
           <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
             {botLog.map((l, i) => (
@@ -720,23 +799,26 @@ function PaperTrade({ btc, btcDir }) {
         <div style={{ marginBottom: 14 }}>
           <div style={{ color: C.sub, fontSize: 12, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>OPEN · {open.length}</div>
           {open.map((t) => {
-            const delta = btc ? btc - t.p0 : 0;
-            const state = !btc ? null : delta === 0 ? "even" : (t.side === "UP" ? delta > 0 : delta < 0) ? "win" : "lose";
-            const stateLabel = state === "win" ? "WINNING" : state === "lose" ? "LOSING" : state === "even" ? "EVEN" : "";
-            const stateCol = state === "win" ? C.green : state === "lose" ? C.red : C.sub;
             const left = t.settleAt - now;
             const col = t.side === "UP" ? C.green : C.red;
+            const mark = markFor(t);
+            const markC = mark == null ? null : Math.round(mark * 100);
+            const unreal = unrealized(t);
+            const uCol = unreal == null ? C.sub : unreal > 0 ? C.green : unreal < 0 ? C.red : C.sub;
             return (
               <div key={t.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: col, fontSize: 14, fontWeight: 900 }}>{t.side === "UP" ? "▲" : "▼"} {t.side}{t.byBot ? <span style={{ color: C.violet, fontSize: 11, fontWeight: 800 }}> 🤖</span> : null}</span>
                   <span style={{ color: C.text, fontVariantNumeric: "tabular-nums", fontSize: 14, fontWeight: 800 }}>{cd(left)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 12, color: C.sub }}>
-                  <span>entry ${Math.round(t.p0).toLocaleString()} · now {btc ? `$${Math.round(btc).toLocaleString()}` : "—"}</span>
-                  <span style={{ color: stateCol, fontWeight: 800 }}>{stateLabel} {btc ? `(${delta >= 0 ? "+" : ""}${delta.toFixed(0)})` : ""}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: C.sub }}>
+                    <div>mark <b style={{ color: C.text }}>{markC == null ? "—" : `${markC}¢`}</b> · entry {t.entry}¢</div>
+                    <div style={{ color: uCol, fontWeight: 800, marginTop: 2 }}>{unreal == null ? "" : `${unreal >= 0 ? "+" : ""}${money(unreal)} if sold now`}</div>
+                  </div>
+                  <button onClick={() => sellNow(t)} disabled={!btc} style={{ background: btc ? C.lift : C.card, border: `1px solid ${C.border}`, color: btc ? C.text : C.dim, fontSize: 13, fontWeight: 800, borderRadius: 10, padding: "9px 16px", cursor: btc ? "pointer" : "default", fontFamily: "inherit" }}>Sell</button>
                 </div>
-                <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>{t.contracts} @ {t.entry}¢ · cost {money(t.cost)} +fee {money(t.fee || 0)} · win → +{money(+(((t.contracts * (100 - t.entry)) / 100) - (t.fee || 0)).toFixed(2))} net</div>
+                <div style={{ marginTop: 6, fontSize: 11, color: C.dim }}>{t.contracts} @ {t.entry}¢ · cost {money(t.cost)} +fee {money(t.fee || 0)} · hold-to-win +{money(+(((t.contracts * (100 - t.entry)) / 100) - (t.fee || 0)).toFixed(2))}</div>
               </div>
             );
           })}
@@ -759,7 +841,7 @@ function PaperTrade({ btc, btcDir }) {
       </div>
       {hist.map((t) => (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 13px", marginBottom: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.result === "win" ? C.green : t.result === "push" ? C.amber : C.red, flexShrink: 0 }} />
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.pnl > 0 ? C.green : t.pnl === 0 ? C.amber : C.red, flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13 }}>
             <div style={{ color: C.text, fontWeight: 700 }}>{t.side === "UP" ? "▲" : "▼"} {t.side} · {t.result.toUpperCase()}{t.byBot ? " 🤖" : ""}</div>
             <div style={{ color: C.dim, fontSize: 11 }}>${Math.round(t.p0).toLocaleString()} → ${Math.round(t.settlePrice).toLocaleString()} · {t.contracts}@{t.entry}¢</div>

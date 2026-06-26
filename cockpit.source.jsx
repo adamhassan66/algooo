@@ -1,4 +1,14 @@
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
+
+// Persist a piece of state to localStorage so balances/trades survive reloads.
+function usePersist(key, initial) {
+  const [v, setV] = useState(() => {
+    try { const s = localStorage.getItem(key); return s != null ? JSON.parse(s) : initial; }
+    catch { return initial; }
+  });
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }, [key, v]);
+  return [v, setV];
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
    KALSHI COCKPIT — an honest trading workspace
@@ -257,9 +267,182 @@ function Log({ trades, setTrades, entry }) {
   );
 }
 
+/* ── Paper trading: Kalshi 15-min BTC up/down ────────────────────────────── */
+function PaperTrade({ btc }) {
+  const [bal, setBal] = usePersist("kc_bal", 1000);
+  const [open, setOpen] = usePersist("kc_open", []);
+  const [hist, setHist] = usePersist("kc_hist", []);
+  const [side, setSide] = useState("UP");
+  const [entry, setEntry] = useState(50);
+  const [stake, setStake] = useState(20);
+  const [now, setNow] = useState(Date.now());
+  const btcRef = useRef(btc);
+  btcRef.current = btc;
+
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+
+  // Auto-settle any trade whose 15-min window has elapsed, using the latest
+  // observed BTC price. UP wins if price > entry price; DOWN wins if price < it.
+  useEffect(() => {
+    const price = btcRef.current;
+    if (!price) return;
+    setOpen((prev) => {
+      const due = prev.filter((t) => now >= t.settleAt);
+      if (!due.length) return prev;
+      let credit = 0;
+      const settled = due.map((t) => {
+        const tie = price === t.p0;
+        const win = t.side === "UP" ? price > t.p0 : price < t.p0;
+        const payout = tie ? t.cost : win ? t.contracts : 0; // $1 per contract on win; refund on tie
+        credit += payout;
+        return { ...t, settlePrice: price, result: tie ? "push" : win ? "win" : "loss", pnl: +(payout - t.cost).toFixed(2) };
+      });
+      if (credit) setBal((b) => +(b + credit).toFixed(2));
+      setHist((h) => [...settled, ...h].slice(0, 60));
+      return prev.filter((t) => now < t.settleAt);
+    });
+  }, [now]);
+
+  const contracts = Math.max(1, Math.floor(stake / (entry / 100)));
+  const cost = +((contracts * entry) / 100).toFixed(2);
+  const profitIfWin = +((contracts * (100 - entry)) / 100).toFixed(2);
+  const canPlace = !!btc && cost <= bal;
+
+  const place = () => {
+    if (!canPlace) return;
+    const t0 = Date.now();
+    setBal((b) => +(b - cost).toFixed(2));
+    setOpen((o) => [{ id: t0, side, entry, contracts, cost, p0: btc, placedAt: t0, settleAt: t0 + 15 * 60 * 1000 }, ...o]);
+  };
+  const reset = () => { setBal(1000); setOpen([]); setHist([]); };
+
+  const atRisk = open.reduce((a, t) => a + t.cost, 0);
+  const realized = hist.reduce((a, t) => a + t.pnl, 0);
+  const wins = hist.filter((t) => t.result === "win").length;
+  const rate = hist.length ? (wins / hist.length) * 100 : 0;
+  const cd = (msLeft) => { const s = Math.max(0, Math.ceil(msLeft / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+  const SideBtn = ({ id, label, arrow, col }) => (
+    <button onClick={() => setSide(id)} style={{
+      flex: 1, padding: "14px 0", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+      fontSize: 16, fontWeight: 900, letterSpacing: 0.3,
+      border: `1.5px solid ${side === id ? col : C.border}`,
+      background: side === id ? col + "22" : C.bg, color: side === id ? col : C.sub,
+    }}>{arrow} {label}</button>
+  );
+
+  return (
+    <div>
+      {/* balance */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12, fontWeight: 600 }}>Mock balance</span>
+          <span style={{ color: C.text, fontSize: 30, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{money(bal)}</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+          <Stat label="AT RISK" value={money(atRisk)} color={C.amber} />
+          <Stat label="REALIZED" value={money(realized)} color={realized >= 0 ? C.green : C.red} />
+          <Stat label="WIN RATE" value={`${rate.toFixed(0)}%`} color={rate >= 50 ? C.green : C.sub} />
+        </div>
+      </div>
+
+      {/* ticket */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+          <span style={{ color: C.sub, fontSize: 13, fontWeight: 600 }}>BTC 15-min · up or down</span>
+          <span style={{ color: C.amber, fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{btc ? `$${Math.round(btc).toLocaleString()}` : "price…"}</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <SideBtn id="UP" label="UP" arrow="▲" col={C.green} />
+          <SideBtn id="DOWN" label="DOWN" arrow="▼" col={C.red} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Entry price / contract</span>
+          <span style={{ color: C.blue, fontSize: 18, fontWeight: 800 }}>{entry}¢</span>
+        </div>
+        <input type="range" min={1} max={99} step={1} value={entry} onChange={(e) => setEntry(+e.target.value)}
+          style={{ width: "100%", accentColor: C.blue, height: 24, marginBottom: 8 }} />
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Stake</span>
+          <span style={{ color: C.blue, fontSize: 18, fontWeight: 800 }}>${stake}</span>
+        </div>
+        <input type="range" min={1} max={Math.max(2, Math.min(200, Math.floor(bal)))} step={1} value={stake} onChange={(e) => setStake(+e.target.value)}
+          style={{ width: "100%", accentColor: C.blue, height: 24, marginBottom: 12 }} />
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <Stat label="CONTRACTS" value={contracts} />
+          <Stat label="COST" value={money(cost)} color={C.amber} />
+          <Stat label="WIN PROFIT" value={`+${money(profitIfWin)}`} color={C.green} />
+        </div>
+
+        <button onClick={place} disabled={!canPlace} style={{
+          width: "100%", padding: 15, borderRadius: 12, border: "none",
+          background: canPlace ? (side === "UP" ? C.green : C.red) : C.lift,
+          color: canPlace ? "#06140f" : C.dim, fontSize: 15, fontWeight: 900, fontFamily: "inherit",
+          cursor: canPlace ? "pointer" : "default",
+        }}>
+          {btc ? `Place ${side} · settles in 15:00` : "Waiting for BTC price…"}
+        </button>
+        {!canPlace && btc && <div style={{ color: C.red, fontSize: 12, marginTop: 8, textAlign: "center" }}>Stake exceeds your mock balance</div>}
+      </div>
+
+      {/* open positions */}
+      {open.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ color: C.sub, fontSize: 12, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>OPEN · {open.length}</div>
+          {open.map((t) => {
+            const delta = btc ? btc - t.p0 : 0;
+            const state = !btc ? null : delta === 0 ? "even" : (t.side === "UP" ? delta > 0 : delta < 0) ? "win" : "lose";
+            const stateLabel = state === "win" ? "WINNING" : state === "lose" ? "LOSING" : state === "even" ? "EVEN" : "";
+            const stateCol = state === "win" ? C.green : state === "lose" ? C.red : C.sub;
+            const left = t.settleAt - now;
+            const col = t.side === "UP" ? C.green : C.red;
+            return (
+              <div key={t.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: col, fontSize: 14, fontWeight: 900 }}>{t.side === "UP" ? "▲" : "▼"} {t.side}</span>
+                  <span style={{ color: C.text, fontVariantNumeric: "tabular-nums", fontSize: 14, fontWeight: 800 }}>{cd(left)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 12, color: C.sub }}>
+                  <span>entry ${Math.round(t.p0).toLocaleString()} · now {btc ? `$${Math.round(btc).toLocaleString()}` : "—"}</span>
+                  <span style={{ color: stateCol, fontWeight: 800 }}>
+                    {stateLabel} {btc ? `(${delta >= 0 ? "+" : ""}${delta.toFixed(0)})` : ""}
+                  </span>
+                </div>
+                <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>{t.contracts} contracts @ {t.entry}¢ · cost {money(t.cost)} · win → +{money(+((t.contracts * (100 - t.entry)) / 100).toFixed(2))}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* history */}
+      <PnLChart trades={hist.slice().reverse()} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 8px" }}>
+        <span style={{ color: C.sub, fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>SETTLED · {hist.length}</span>
+        <button onClick={reset} style={{ background: "none", border: `1px solid ${C.border}`, color: C.sub, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "inherit" }}>Reset to $1,000</button>
+      </div>
+      {hist.map((t) => (
+        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 13px", marginBottom: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.result === "win" ? C.green : t.result === "push" ? C.amber : C.red, flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: 13 }}>
+            <div style={{ color: C.text, fontWeight: 700 }}>{t.side === "UP" ? "▲" : "▼"} {t.side} · {t.result.toUpperCase()}</div>
+            <div style={{ color: C.dim, fontSize: 11 }}>${Math.round(t.p0).toLocaleString()} → ${Math.round(t.settlePrice).toLocaleString()} · {t.contracts}@{t.entry}¢</div>
+          </div>
+          <div style={{ color: t.pnl >= 0 ? C.green : C.red, fontSize: 14, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{t.pnl >= 0 ? "+" : ""}{money(t.pnl)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Root ────────────────────────────────────────────────────────────────── */
 function Cockpit() {
-  const [tab, setTab] = useState("strategy");
+  const [tab, setTab] = useState("paper");
   const [entry, setEntry] = useState(20);
   const [trades, setTrades] = useState([]);
   const [btc, setBtc] = useState(null);
@@ -284,7 +467,7 @@ function Cockpit() {
     return () => clearInterval(t);
   }, []);
 
-  const tabs = [["strategy", "Strategy"], ["parlay", "Parlay"], ["log", "P&L Log"]];
+  const tabs = [["paper", "Trade"], ["strategy", "Strategy"], ["parlay", "Parlay"], ["log", "P&L Log"]];
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "-apple-system,'SF Pro Text','Helvetica Neue',sans-serif", WebkitFontSmoothing: "antialiased", paddingBottom: 60 }}>
@@ -312,6 +495,7 @@ function Cockpit() {
       </div>
 
       <div style={{ padding: 16, maxWidth: 480, margin: "0 auto" }}>
+        {tab === "paper" && <PaperTrade btc={btc} />}
         {tab === "strategy" && <Strategy entry={entry} setEntry={setEntry} />}
         {tab === "parlay" && <Parlay />}
         {tab === "log" && <Log trades={trades} setTrades={setTrades} entry={entry} />}

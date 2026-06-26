@@ -368,6 +368,12 @@ const money = n => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, 
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
+
+// live BTC price with cents, like an exchange ticker
+const fmtBtc = n => n == null ? "—" : "$" + n.toLocaleString("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
 function laTime() {
   return new Date().toLocaleTimeString("en-US", {
     timeZone: "America/Los_Angeles",
@@ -1268,7 +1274,8 @@ function Scoreboard({
   })));
 }
 function PaperTrade({
-  btc
+  btc,
+  btcDir
 }) {
   const [bal, setBal] = usePersist("kc_bal", 1000);
   const [open, setOpen] = usePersist("kc_open", []);
@@ -1875,12 +1882,13 @@ function PaperTrade({
     }
   }, "Manual ticket"), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: C.amber,
+      color: btcDir === "up" ? C.green : btcDir === "down" ? C.red : C.amber,
       fontSize: 16,
       fontWeight: 800,
-      fontVariantNumeric: "tabular-nums"
+      fontVariantNumeric: "tabular-nums",
+      transition: "color .2s"
     }
-  }, btc ? `$${Math.round(btc).toLocaleString()}` : "price…")), /*#__PURE__*/React.createElement("div", {
+  }, btc ? `${btcDir === "up" ? "▲" : btcDir === "down" ? "▼" : ""} ${fmtBtc(btc)}` : "price…")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -2178,24 +2186,38 @@ function Cockpit() {
   const [entry, setEntry] = useState(20);
   const [trades, setTrades] = useState([]);
   const [btc, setBtc] = useState(null);
+  const [btcDir, setBtcDir] = useState("flat"); // last tick: up | down | flat
   const [clock, setClock] = useState(laTime());
+  const btcPrev = useRef(null);
   useEffect(() => {
     const t = setInterval(() => setClock(laTime()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // poll the live price every second so it ticks like an exchange
   useEffect(() => {
+    let live = true;
     const go = async () => {
       try {
         const r = await fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot");
         const d = await r.json();
         const p = parseFloat(d?.data?.amount);
-        if (!isNaN(p)) setBtc(p);
-      } catch {/* offline — price just shows — */}
+        if (!live || isNaN(p)) return;
+        const prev = btcPrev.current;
+        if (prev != null && p !== prev) setBtcDir(p > prev ? "up" : "down");
+        btcPrev.current = p;
+        setBtc(p);
+      } catch {/* offline — price just holds — */}
     };
     go();
-    const t = setInterval(go, 10000);
-    return () => clearInterval(t);
+    const t = setInterval(go, 1000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
   }, []);
+  const btcColor = btcDir === "up" ? C.green : btcDir === "down" ? C.red : C.amber;
+  const btcArrow = btcDir === "up" ? "▲" : btcDir === "down" ? "▼" : "";
   const tabs = [["paper", "Trade"], ["strategy", "Strategy"], ["parlay", "Parlay"], ["log", "P&L Log"]];
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2242,17 +2264,18 @@ function Cockpit() {
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      color: C.amber,
+      color: btcColor,
       fontSize: 20,
       fontWeight: 900,
-      fontVariantNumeric: "tabular-nums"
+      fontVariantNumeric: "tabular-nums",
+      transition: "color .2s"
     }
-  }, btc ? `$${Math.round(btc).toLocaleString()}` : "—"), /*#__PURE__*/React.createElement("div", {
+  }, btcArrow, " ", fmtBtc(btc)), /*#__PURE__*/React.createElement("div", {
     style: {
       color: C.sub,
       fontSize: 11
     }
-  }, "BTC spot · live"))), /*#__PURE__*/React.createElement("div", {
+  }, "BTC · live · ", clock.split(" ")[0]))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex"
     }
@@ -2278,7 +2301,8 @@ function Cockpit() {
       margin: "0 auto"
     }
   }, tab === "paper" && /*#__PURE__*/React.createElement(PaperTrade, {
-    btc: btc
+    btc: btc,
+    btcDir: btcDir
   }), tab === "strategy" && /*#__PURE__*/React.createElement(Strategy, {
     entry: entry,
     setEntry: setEntry

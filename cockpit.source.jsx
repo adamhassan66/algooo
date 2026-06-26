@@ -24,6 +24,10 @@ const C = {
 const money = (n) =>
   (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// live BTC price with cents, like an exchange ticker
+const fmtBtc = (n) =>
+  n == null ? "—" : "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 function laTime() {
   return new Date().toLocaleTimeString("en-US", {
     timeZone: "America/Los_Angeles", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true,
@@ -381,7 +385,7 @@ function Scoreboard({ hist }) {
   );
 }
 
-function PaperTrade({ btc }) {
+function PaperTrade({ btc, btcDir }) {
   const [bal, setBal] = usePersist("kc_bal", 1000);
   const [open, setOpen] = usePersist("kc_open", []);
   const [hist, setHist] = usePersist("kc_hist", []);
@@ -669,7 +673,7 @@ function PaperTrade({ btc }) {
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
           <span style={{ color: C.sub, fontSize: 13, fontWeight: 600 }}>Manual ticket</span>
-          <span style={{ color: C.amber, fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{btc ? `$${Math.round(btc).toLocaleString()}` : "price…"}</span>
+          <span style={{ color: btcDir === "up" ? C.green : btcDir === "down" ? C.red : C.amber, fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums", transition: "color .2s" }}>{btc ? `${btcDir === "up" ? "▲" : btcDir === "down" ? "▼" : ""} ${fmtBtc(btc)}` : "price…"}</span>
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -773,26 +777,37 @@ function Cockpit() {
   const [entry, setEntry] = useState(20);
   const [trades, setTrades] = useState([]);
   const [btc, setBtc] = useState(null);
+  const [btcDir, setBtcDir] = useState("flat"); // last tick: up | down | flat
   const [clock, setClock] = useState(laTime());
+  const btcPrev = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setClock(laTime()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // poll the live price every second so it ticks like an exchange
   useEffect(() => {
+    let live = true;
     const go = async () => {
       try {
         const r = await fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot");
         const d = await r.json();
         const p = parseFloat(d?.data?.amount);
-        if (!isNaN(p)) setBtc(p);
-      } catch { /* offline — price just shows — */ }
+        if (!live || isNaN(p)) return;
+        const prev = btcPrev.current;
+        if (prev != null && p !== prev) setBtcDir(p > prev ? "up" : "down");
+        btcPrev.current = p;
+        setBtc(p);
+      } catch { /* offline — price just holds — */ }
     };
     go();
-    const t = setInterval(go, 10000);
-    return () => clearInterval(t);
+    const t = setInterval(go, 1000);
+    return () => { live = false; clearInterval(t); };
   }, []);
+
+  const btcColor = btcDir === "up" ? C.green : btcDir === "down" ? C.red : C.amber;
+  const btcArrow = btcDir === "up" ? "▲" : btcDir === "down" ? "▼" : "";
 
   const tabs = [["paper", "Trade"], ["strategy", "Strategy"], ["parlay", "Parlay"], ["log", "P&L Log"]];
 
@@ -806,8 +821,8 @@ function Cockpit() {
             <div style={{ color: C.sub, fontSize: 12, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{clock} · Los Angeles</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: C.amber, fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{btc ? `$${Math.round(btc).toLocaleString()}` : "—"}</div>
-            <div style={{ color: C.sub, fontSize: 11 }}>BTC spot · live</div>
+            <div style={{ color: btcColor, fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums", transition: "color .2s" }}>{btcArrow} {fmtBtc(btc)}</div>
+            <div style={{ color: C.sub, fontSize: 11 }}>BTC · live · {clock.split(" ")[0]}</div>
           </div>
         </div>
         <div style={{ display: "flex" }}>
@@ -822,7 +837,7 @@ function Cockpit() {
       </div>
 
       <div style={{ padding: 16, maxWidth: 480, margin: "0 auto" }}>
-        {tab === "paper" && <PaperTrade btc={btc} />}
+        {tab === "paper" && <PaperTrade btc={btc} btcDir={btcDir} />}
         {tab === "strategy" && <Strategy entry={entry} setEntry={setEntry} />}
         {tab === "parlay" && <Parlay />}
         {tab === "log" && <Log trades={trades} setTrades={setTrades} entry={entry} />}

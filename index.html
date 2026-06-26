@@ -1275,6 +1275,7 @@ function PaperTrade({
   const [hist, setHist] = usePersist("kc_hist", []);
   const [auto, setAuto] = usePersist("kc_auto", false);
   const [botStake, setBotStake] = usePersist("kc_botstake", 10);
+  const [botThresh, setBotThresh] = usePersist("kc_botthresh", 0);
   const [side, setSide] = useState("UP");
   const [entry, setEntry] = useState(50);
   const [stake, setStake] = useState(20);
@@ -1409,22 +1410,35 @@ function PaperTrade({
     });
   }, [now]);
 
-  // the bot: once per window, near the open, pick a side and paper-trade it.
+  // the bot: once per window, near the open, decide a side and paper-trade it.
   // Window end = the real Kalshi close time when we have it, else the clock.
+  // With a strong-signal threshold it SKIPS windows where momentum is weak.
   const settleAt = kalshi.market && kalshi.market.closeTime > now + 60000 ? kalshi.market.closeTime : winEnd(now);
+  const botDecided = useRef(0);
   useEffect(() => {
     if (!auto || !btc) return;
     const we = settleAt;
     if (we - now <= 60000) return; // too late in this window
-    if (open.some(t => t.byBot && t.settleAt === we)) return; // already traded this window
+    if (botDecided.current === we) return; // already decided this window
+    if (open.some(t => t.byBot && t.settleAt === we)) {
+      botDecided.current = we;
+      return;
+    }
     const mom = momentum();
+    const stamp = new Date(now).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+    if (Math.abs(mom) < botThresh) {
+      // weak signal -> sit this one out
+      botDecided.current = we;
+      setBotLog(l => [`${stamp} · skip — weak signal (${mom >= 0 ? "+" : ""}${mom.toFixed(0)}/2m < $${botThresh})`, ...l].slice(0, 8));
+      return;
+    }
     const sd = mom >= 0 ? "UP" : "DOWN";
     const e = kalshi.market ? sd === "UP" ? kalshi.market.upAsk : kalshi.market.downAsk : entry;
     if (placeTrade(sd, e, botStake, we, true)) {
-      const stamp = new Date(now).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit"
-      });
+      botDecided.current = we;
       setBotLog(l => [`${stamp} · ${sd} @ ${e}¢ — BTC ${mom >= 0 ? "+" : ""}${mom.toFixed(0)}/2m`, ...l].slice(0, 8));
     }
   }, [now, auto]);
@@ -1435,10 +1449,51 @@ function PaperTrade({
   const canPlace = !!btc && cost + fee <= bal;
   const manualSettle = kalshi.market && kalshi.market.closeTime > now + 60000 ? kalshi.market.closeTime : winEnd(now);
   const reset = () => {
-    setBal(1000);
-    setOpen([]);
-    setHist([]);
-    setBotLog([]);
+    if (confirm("Reset balance to $1,000 and clear all trades?")) {
+      setBal(1000);
+      setOpen([]);
+      setHist([]);
+      setBotLog([]);
+    }
+  };
+
+  // keep a record across devices / resets
+  const download = (name, type, data) => {
+    const blob = new Blob([data], {
+      type
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const exportCsv = () => {
+    const rows = [["time", "side", "by", "entry_cents", "contracts", "cost", "fee", "entryBTC", "settleBTC", "result", "net_pnl"]];
+    hist.slice().reverse().forEach(t => rows.push([new Date(t.placedAt || t.id).toISOString(), t.side, t.byBot ? "bot" : "manual", t.entry, t.contracts, t.cost, t.fee || 0, Math.round(t.p0), Math.round(t.settlePrice), t.result, t.pnl]));
+    download("cockpit-trades.csv", "text/csv", rows.map(r => r.join(",")).join("\n"));
+  };
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(hist));
+      alert(`Copied ${hist.length} trades to clipboard.`);
+    } catch {
+      download("cockpit-trades.json", "application/json", JSON.stringify(hist));
+    }
+  };
+  const importJson = () => {
+    const s = window.prompt("Paste exported trade JSON to restore your log:");
+    if (!s) return;
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) {
+        setHist(arr);
+        alert(`Loaded ${arr.length} trades.`);
+      } else alert("That isn't a trade list.");
+    } catch {
+      alert("Invalid JSON — paste the full exported text.");
+    }
   };
   const atRisk = open.reduce((a, t) => a + t.cost, 0);
   const realized = hist.reduce((a, t) => a + t.pnl, 0);
@@ -1745,9 +1800,45 @@ function PaperTrade({
     style: {
       width: "100%",
       accentColor: C.violet,
+      height: 24,
+      marginBottom: 8
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12
+    }
+  }, "Min signal · skip if weaker"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.violet,
+      fontSize: 16,
+      fontWeight: 800
+    }
+  }, botThresh === 0 ? "off" : `$${botThresh}`)), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 0,
+    max: 300,
+    step: 5,
+    value: botThresh,
+    onChange: e => setBotThresh(+e.target.value),
+    style: {
+      width: "100%",
+      accentColor: C.violet,
       height: 24
     }
-  }), botLog.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, botThresh === 0 ? "Trades every window." : `Only trades when BTC moved >$${botThresh} in the last 2 min — tests whether being selective beats trading blind.`), botLog.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 8,
       borderTop: `1px solid ${C.border}`,
@@ -1987,10 +2078,14 @@ function PaperTrade({
     trades: hist.slice().reverse()
   }), /*#__PURE__*/React.createElement("div", {
     style: {
+      margin: "14px 0 8px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      margin: "14px 0 8px"
+      marginBottom: 8
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -2004,7 +2099,7 @@ function PaperTrade({
     style: {
       background: "none",
       border: `1px solid ${C.border}`,
-      color: C.sub,
+      color: C.red,
       fontSize: 12,
       fontWeight: 700,
       borderRadius: 8,
@@ -2012,7 +2107,27 @@ function PaperTrade({
       cursor: "pointer",
       fontFamily: "inherit"
     }
-  }, "Reset to $1,000")), hist.map(t => /*#__PURE__*/React.createElement("div", {
+  }, "Reset")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, [["⬇ CSV", exportCsv], ["⧉ Copy JSON", copyJson], ["⬆ Import", importJson]].map(([lbl, fn]) => /*#__PURE__*/React.createElement("button", {
+    key: lbl,
+    onClick: fn,
+    style: {
+      flex: 1,
+      background: C.bg,
+      border: `1px solid ${C.border}`,
+      color: C.sub,
+      fontSize: 12,
+      fontWeight: 700,
+      borderRadius: 8,
+      padding: "8px 6px",
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, lbl)))), hist.map(t => /*#__PURE__*/React.createElement("div", {
     key: t.id,
     style: {
       display: "flex",

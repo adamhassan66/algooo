@@ -387,6 +387,7 @@ function PaperTrade({ btc }) {
   const [hist, setHist] = usePersist("kc_hist", []);
   const [auto, setAuto] = usePersist("kc_auto", false);
   const [botStake, setBotStake] = usePersist("kc_botstake", 10);
+  const [botThresh, setBotThresh] = usePersist("kc_botthresh", 0);
   const [side, setSide] = useState("UP");
   const [entry, setEntry] = useState(50);
   const [stake, setStake] = useState(20);
@@ -477,19 +478,28 @@ function PaperTrade({ btc }) {
     });
   }, [now]);
 
-  // the bot: once per window, near the open, pick a side and paper-trade it.
+  // the bot: once per window, near the open, decide a side and paper-trade it.
   // Window end = the real Kalshi close time when we have it, else the clock.
+  // With a strong-signal threshold it SKIPS windows where momentum is weak.
   const settleAt = (kalshi.market && kalshi.market.closeTime > now + 60000) ? kalshi.market.closeTime : winEnd(now);
+  const botDecided = useRef(0);
   useEffect(() => {
     if (!auto || !btc) return;
     const we = settleAt;
     if (we - now <= 60000) return;                 // too late in this window
-    if (open.some((t) => t.byBot && t.settleAt === we)) return; // already traded this window
+    if (botDecided.current === we) return;         // already decided this window
+    if (open.some((t) => t.byBot && t.settleAt === we)) { botDecided.current = we; return; }
     const mom = momentum();
+    const stamp = new Date(now).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (Math.abs(mom) < botThresh) {               // weak signal -> sit this one out
+      botDecided.current = we;
+      setBotLog((l) => [`${stamp} · skip — weak signal (${mom >= 0 ? "+" : ""}${mom.toFixed(0)}/2m < $${botThresh})`, ...l].slice(0, 8));
+      return;
+    }
     const sd = mom >= 0 ? "UP" : "DOWN";
     const e = kalshi.market ? (sd === "UP" ? kalshi.market.upAsk : kalshi.market.downAsk) : entry;
     if (placeTrade(sd, e, botStake, we, true)) {
-      const stamp = new Date(now).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      botDecided.current = we;
       setBotLog((l) => [`${stamp} · ${sd} @ ${e}¢ — BTC ${mom >= 0 ? "+" : ""}${mom.toFixed(0)}/2m`, ...l].slice(0, 8));
     }
   }, [now, auto]);
@@ -501,7 +511,34 @@ function PaperTrade({ btc }) {
   const canPlace = !!btc && cost + fee <= bal;
   const manualSettle = (kalshi.market && kalshi.market.closeTime > now + 60000) ? kalshi.market.closeTime : winEnd(now);
 
-  const reset = () => { setBal(1000); setOpen([]); setHist([]); setBotLog([]); };
+  const reset = () => { if (confirm("Reset balance to $1,000 and clear all trades?")) { setBal(1000); setOpen([]); setHist([]); setBotLog([]); } };
+
+  // keep a record across devices / resets
+  const download = (name, type, data) => {
+    const blob = new Blob([data], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const exportCsv = () => {
+    const rows = [["time", "side", "by", "entry_cents", "contracts", "cost", "fee", "entryBTC", "settleBTC", "result", "net_pnl"]];
+    hist.slice().reverse().forEach((t) => rows.push([
+      new Date(t.placedAt || t.id).toISOString(), t.side, t.byBot ? "bot" : "manual",
+      t.entry, t.contracts, t.cost, t.fee || 0, Math.round(t.p0), Math.round(t.settlePrice), t.result, t.pnl,
+    ]));
+    download("cockpit-trades.csv", "text/csv", rows.map((r) => r.join(",")).join("\n"));
+  };
+  const copyJson = async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(hist)); alert(`Copied ${hist.length} trades to clipboard.`); }
+    catch { download("cockpit-trades.json", "application/json", JSON.stringify(hist)); }
+  };
+  const importJson = () => {
+    const s = window.prompt("Paste exported trade JSON to restore your log:");
+    if (!s) return;
+    try { const arr = JSON.parse(s); if (Array.isArray(arr)) { setHist(arr); alert(`Loaded ${arr.length} trades.`); } else alert("That isn't a trade list."); }
+    catch { alert("Invalid JSON — paste the full exported text."); }
+  };
 
   const atRisk = open.reduce((a, t) => a + t.cost, 0);
   const realized = hist.reduce((a, t) => a + t.pnl, 0);
@@ -609,7 +646,16 @@ function PaperTrade({ btc }) {
           <span style={{ color: C.violet, fontSize: 16, fontWeight: 800 }}>${botStake}</span>
         </div>
         <input type="range" min={1} max={Math.max(2, Math.min(100, Math.floor(bal)))} step={1} value={botStake} onChange={(e) => setBotStake(+e.target.value)}
+          style={{ width: "100%", accentColor: C.violet, height: 24, marginBottom: 8 }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Min signal · skip if weaker</span>
+          <span style={{ color: C.violet, fontSize: 16, fontWeight: 800 }}>{botThresh === 0 ? "off" : `$${botThresh}`}</span>
+        </div>
+        <input type="range" min={0} max={300} step={5} value={botThresh} onChange={(e) => setBotThresh(+e.target.value)}
           style={{ width: "100%", accentColor: C.violet, height: 24 }} />
+        <div style={{ color: C.dim, fontSize: 11, marginTop: 2 }}>
+          {botThresh === 0 ? "Trades every window." : `Only trades when BTC moved >$${botThresh} in the last 2 min — tests whether being selective beats trading blind.`}
+        </div>
         {botLog.length > 0 && (
           <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
             {botLog.map((l, i) => (
@@ -696,9 +742,16 @@ function PaperTrade({ btc }) {
       {/* history */}
       <PnLChart trades={hist.slice().reverse()} />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 8px" }}>
-        <span style={{ color: C.sub, fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>SETTLED · {hist.length}</span>
-        <button onClick={reset} style={{ background: "none", border: `1px solid ${C.border}`, color: C.sub, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "inherit" }}>Reset to $1,000</button>
+      <div style={{ margin: "14px 0 8px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ color: C.sub, fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>SETTLED · {hist.length}</span>
+          <button onClick={reset} style={{ background: "none", border: `1px solid ${C.border}`, color: C.red, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "inherit" }}>Reset</button>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["⬇ CSV", exportCsv], ["⧉ Copy JSON", copyJson], ["⬆ Import", importJson]].map(([lbl, fn]) => (
+            <button key={lbl} onClick={fn} style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, color: C.sub, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "8px 6px", cursor: "pointer", fontFamily: "inherit" }}>{lbl}</button>
+          ))}
+        </div>
       </div>
       {hist.map((t) => (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 13px", marginBottom: 8 }}>

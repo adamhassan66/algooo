@@ -1096,6 +1096,12 @@ async function fetchKalshiBtc() {
 const Q = 15 * 60 * 1000; // 15-minute window
 const winEnd = ts => Math.floor(ts / Q) * Q + Q; // next :00/:15/:30/:45 boundary
 
+// Kalshi trading fee, charged when you buy: ceil(0.07 * C * P * (1-P)) dollars,
+// P in dollars. This is what makes a paper "win" match real net money.
+const kalshiFee = (contracts, entryCents) => {
+  const p = entryCents / 100;
+  return Math.ceil(0.07 * contracts * p * (1 - p) * 100) / 100;
+};
 function PaperTrade({
   btc
 }) {
@@ -1167,15 +1173,17 @@ function PaperTrade({
     if (!btc) return false;
     const contracts = Math.max(1, Math.floor(stakeUSD / (entryCents / 100)));
     const cost = +(contracts * entryCents / 100).toFixed(2);
-    if (cost > bal) return false;
+    const fee = kalshiFee(contracts, entryCents);
+    if (cost + fee > bal) return false;
     const t0 = Date.now();
-    setBal(b => +(b - cost).toFixed(2));
+    setBal(b => +(b - cost - fee).toFixed(2));
     setOpen(o => [{
       id: t0 + Math.random(),
       side: sd,
       entry: entryCents,
       contracts,
       cost,
+      fee,
       p0: btc,
       placedAt: t0,
       settleAt,
@@ -1201,7 +1209,7 @@ function PaperTrade({
           ...t,
           settlePrice: price,
           result: tie ? "push" : win ? "win" : "loss",
-          pnl: +(payout - t.cost).toFixed(2)
+          pnl: +(payout - t.cost - (t.fee || 0)).toFixed(2)
         };
       });
       if (credit) setBal(b => +(b + credit).toFixed(2));
@@ -1231,8 +1239,9 @@ function PaperTrade({
   }, [now, auto]);
   const contracts = Math.max(1, Math.floor(stake / (entry / 100)));
   const cost = +(contracts * entry / 100).toFixed(2);
-  const profitIfWin = +(contracts * (100 - entry) / 100).toFixed(2);
-  const canPlace = !!btc && cost <= bal;
+  const fee = kalshiFee(contracts, entry);
+  const profitIfWin = +(contracts * (100 - entry) / 100 - fee).toFixed(2); // net of fee
+  const canPlace = !!btc && cost + fee <= bal;
   const manualSettle = kalshi.market && kalshi.market.closeTime > now + 60000 ? kalshi.market.closeTime : winEnd(now);
   const reset = () => {
     setBal(1000);
@@ -1571,20 +1580,26 @@ function PaperTrade({
     style: {
       display: "flex",
       gap: 6,
-      marginBottom: 12
+      marginBottom: 6
     }
   }, /*#__PURE__*/React.createElement(Stat, {
     label: "CONTRACTS",
     value: contracts
   }), /*#__PURE__*/React.createElement(Stat, {
-    label: "COST",
-    value: money(cost),
+    label: "COST + FEE",
+    value: money(cost + fee),
     color: C.amber
   }), /*#__PURE__*/React.createElement(Stat, {
-    label: "WIN PROFIT",
+    label: "NET WIN",
     value: `+${money(profitIfWin)}`,
     color: C.green
-  })), /*#__PURE__*/React.createElement("button", {
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      marginBottom: 12
+    }
+  }, "Incl. Kalshi fee ", money(fee), " · win pays $", contracts, ".00 · settles vs BTC at window close"), /*#__PURE__*/React.createElement("button", {
     onClick: () => placeTrade(side, entry, stake, manualSettle, false),
     disabled: !canPlace,
     style: {
@@ -1678,7 +1693,7 @@ function PaperTrade({
         fontSize: 11,
         color: C.dim
       }
-    }, t.contracts, " contracts @ ", t.entry, "¢ · cost ", money(t.cost), " · win → +", money(+(t.contracts * (100 - t.entry) / 100).toFixed(2))));
+    }, t.contracts, " @ ", t.entry, "¢ · cost ", money(t.cost), " +fee ", money(t.fee || 0), " · win → +", money(+(t.contracts * (100 - t.entry) / 100 - (t.fee || 0)).toFixed(2)), " net"));
   })), /*#__PURE__*/React.createElement(PnLChart, {
     trades: hist.slice().reverse()
   }), /*#__PURE__*/React.createElement("div", {

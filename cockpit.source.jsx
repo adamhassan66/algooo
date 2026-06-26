@@ -307,6 +307,13 @@ async function fetchKalshiBtc() {
 const Q = 15 * 60 * 1000; // 15-minute window
 const winEnd = (ts) => Math.floor(ts / Q) * Q + Q; // next :00/:15/:30/:45 boundary
 
+// Kalshi trading fee, charged when you buy: ceil(0.07 * C * P * (1-P)) dollars,
+// P in dollars. This is what makes a paper "win" match real net money.
+const kalshiFee = (contracts, entryCents) => {
+  const p = entryCents / 100;
+  return Math.ceil(0.07 * contracts * p * (1 - p) * 100) / 100;
+};
+
 function PaperTrade({ btc }) {
   const [bal, setBal] = usePersist("kc_bal", 1000);
   const [open, setOpen] = usePersist("kc_open", []);
@@ -357,10 +364,11 @@ function PaperTrade({ btc }) {
     if (!btc) return false;
     const contracts = Math.max(1, Math.floor(stakeUSD / (entryCents / 100)));
     const cost = +((contracts * entryCents) / 100).toFixed(2);
-    if (cost > bal) return false;
+    const fee = kalshiFee(contracts, entryCents);
+    if (cost + fee > bal) return false;
     const t0 = Date.now();
-    setBal((b) => +(b - cost).toFixed(2));
-    setOpen((o) => [{ id: t0 + Math.random(), side: sd, entry: entryCents, contracts, cost, p0: btc, placedAt: t0, settleAt, byBot: !!byBot }, ...o]);
+    setBal((b) => +(b - cost - fee).toFixed(2));
+    setOpen((o) => [{ id: t0 + Math.random(), side: sd, entry: entryCents, contracts, cost, fee, p0: btc, placedAt: t0, settleAt, byBot: !!byBot }, ...o]);
     return true;
   };
 
@@ -377,7 +385,7 @@ function PaperTrade({ btc }) {
         const win = t.side === "UP" ? price > t.p0 : price < t.p0;
         const payout = tie ? t.cost : win ? t.contracts : 0;
         credit += payout;
-        return { ...t, settlePrice: price, result: tie ? "push" : win ? "win" : "loss", pnl: +(payout - t.cost).toFixed(2) };
+        return { ...t, settlePrice: price, result: tie ? "push" : win ? "win" : "loss", pnl: +(payout - t.cost - (t.fee || 0)).toFixed(2) };
       });
       if (credit) setBal((b) => +(b + credit).toFixed(2));
       setHist((h) => [...settled, ...h].slice(0, 60));
@@ -404,8 +412,9 @@ function PaperTrade({ btc }) {
 
   const contracts = Math.max(1, Math.floor(stake / (entry / 100)));
   const cost = +((contracts * entry) / 100).toFixed(2);
-  const profitIfWin = +((contracts * (100 - entry)) / 100).toFixed(2);
-  const canPlace = !!btc && cost <= bal;
+  const fee = kalshiFee(contracts, entry);
+  const profitIfWin = +(((contracts * (100 - entry)) / 100) - fee).toFixed(2); // net of fee
+  const canPlace = !!btc && cost + fee <= bal;
   const manualSettle = (kalshi.market && kalshi.market.closeTime > now + 60000) ? kalshi.market.closeTime : winEnd(now);
 
   const reset = () => { setBal(1000); setOpen([]); setHist([]); setBotLog([]); };
@@ -520,10 +529,13 @@ function PaperTrade({ btc }) {
         <input type="range" min={1} max={Math.max(2, Math.min(200, Math.floor(bal)))} step={1} value={stake} onChange={(e) => setStake(+e.target.value)}
           style={{ width: "100%", accentColor: C.blue, height: 24, marginBottom: 12 }} />
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
           <Stat label="CONTRACTS" value={contracts} />
-          <Stat label="COST" value={money(cost)} color={C.amber} />
-          <Stat label="WIN PROFIT" value={`+${money(profitIfWin)}`} color={C.green} />
+          <Stat label="COST + FEE" value={money(cost + fee)} color={C.amber} />
+          <Stat label="NET WIN" value={`+${money(profitIfWin)}`} color={C.green} />
+        </div>
+        <div style={{ color: C.dim, fontSize: 11, marginBottom: 12 }}>
+          Incl. Kalshi fee {money(fee)} · win pays ${contracts}.00 · settles vs BTC at window close
         </div>
 
         <button onClick={() => placeTrade(side, entry, stake, manualSettle, false)} disabled={!canPlace} style={{
@@ -558,7 +570,7 @@ function PaperTrade({ btc }) {
                   <span>entry ${Math.round(t.p0).toLocaleString()} · now {btc ? `$${Math.round(btc).toLocaleString()}` : "—"}</span>
                   <span style={{ color: stateCol, fontWeight: 800 }}>{stateLabel} {btc ? `(${delta >= 0 ? "+" : ""}${delta.toFixed(0)})` : ""}</span>
                 </div>
-                <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>{t.contracts} contracts @ {t.entry}¢ · cost {money(t.cost)} · win → +{money(+((t.contracts * (100 - t.entry)) / 100).toFixed(2))}</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>{t.contracts} @ {t.entry}¢ · cost {money(t.cost)} +fee {money(t.fee || 0)} · win → +{money(+(((t.contracts * (100 - t.entry)) / 100) - (t.fee || 0)).toFixed(2))} net</div>
               </div>
             );
           })}

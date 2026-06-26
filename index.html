@@ -319,7 +319,6 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
 </script>
 <script>
 try {
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 const {
   useState,
   useEffect,
@@ -366,7 +365,7 @@ function Stat({
   value,
   color
 }) {
-  return /*#__PURE__*/_jsxs("div", {
+  return /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       background: C.bg,
@@ -374,26 +373,23 @@ function Stat({
       padding: "10px 6px",
       textAlign: "center",
       border: `1px solid ${C.border}`
-    },
-    children: [/*#__PURE__*/_jsx("div", {
-      style: {
-        color: C.sub,
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: 0.4,
-        marginBottom: 3
-      },
-      children: label
-    }), /*#__PURE__*/_jsx("div", {
-      style: {
-        color: color || C.text,
-        fontSize: 15,
-        fontWeight: 800,
-        fontVariantNumeric: "tabular-nums"
-      },
-      children: value
-    })]
-  });
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 10,
+      fontWeight: 600,
+      letterSpacing: 0.4,
+      marginBottom: 3
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: color || C.text,
+      fontSize: 15,
+      fontWeight: 800,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, value));
 }
 
 /* ── PnL line chart (hand-drawn SVG, no deps) ────────────────────────────── */
@@ -427,97 +423,89 @@ function PnLChart({
   const path = series.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.pnl).toFixed(1)}`).join(" ");
   const area = `${path} L${x(series.length - 1).toFixed(1)},${y(min).toFixed(1)} L${x(0).toFixed(1)},${y(min).toFixed(1)} Z`;
   const zeroY = y(0);
-  return /*#__PURE__*/_jsxs("div", {
+  return /*#__PURE__*/React.createElement("div", {
     style: {
       background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
       padding: 14
-    },
-    children: [/*#__PURE__*/_jsxs("div", {
-      style: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        marginBottom: 8
-      },
-      children: [/*#__PURE__*/_jsx("span", {
-        style: {
-          color: C.sub,
-          fontSize: 12,
-          fontWeight: 600
-        },
-        children: "Cumulative P&L"
-      }), /*#__PURE__*/_jsx("span", {
-        style: {
-          color: line,
-          fontSize: 22,
-          fontWeight: 900,
-          fontVariantNumeric: "tabular-nums"
-        },
-        children: money(last)
-      })]
-    }), /*#__PURE__*/_jsxs("svg", {
-      viewBox: `0 0 ${W} ${H}`,
-      width: "100%",
-      height: H,
-      style: {
-        display: "block"
-      },
-      children: [/*#__PURE__*/_jsx("defs", {
-        children: /*#__PURE__*/_jsxs("linearGradient", {
-          id: "pnlfill",
-          x1: "0",
-          y1: "0",
-          x2: "0",
-          y2: "1",
-          children: [/*#__PURE__*/_jsx("stop", {
-            offset: "0%",
-            stopColor: line,
-            stopOpacity: "0.25"
-          }), /*#__PURE__*/_jsx("stop", {
-            offset: "100%",
-            stopColor: line,
-            stopOpacity: "0"
-          })]
-        })
-      }), /*#__PURE__*/_jsx("line", {
-        x1: pad,
-        y1: zeroY,
-        x2: W - pad,
-        y2: zeroY,
-        stroke: C.dim,
-        strokeWidth: "1",
-        strokeDasharray: "3 4"
-      }), trades.length > 0 && /*#__PURE__*/_jsx("path", {
-        d: area,
-        fill: "url(#pnlfill)"
-      }), trades.length > 0 && /*#__PURE__*/_jsx("path", {
-        d: path,
-        fill: "none",
-        stroke: line,
-        strokeWidth: "2.5",
-        strokeLinejoin: "round",
-        strokeLinecap: "round"
-      }), series.map((p, i) => i > 0 && /*#__PURE__*/_jsx("circle", {
-        cx: x(i),
-        cy: y(p.pnl),
-        r: "2.6",
-        fill: C.bg,
-        stroke: line,
-        strokeWidth: "1.6"
-      }, i))]
-    }), trades.length === 0 && /*#__PURE__*/_jsx("div", {
-      style: {
-        color: C.dim,
-        fontSize: 12,
-        textAlign: "center",
-        marginTop: -84,
-        marginBottom: 78
-      },
-      children: "Log a trade to start your curve"
-    })]
-  });
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, "Cumulative P&L"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: line,
+      fontSize: 22,
+      fontWeight: 900,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, money(last))), /*#__PURE__*/React.createElement("svg", {
+    viewBox: `0 0 ${W} ${H}`,
+    width: "100%",
+    height: H,
+    style: {
+      display: "block"
+    }
+  }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("linearGradient", {
+    id: "pnlfill",
+    x1: "0",
+    y1: "0",
+    x2: "0",
+    y2: "1"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: line,
+    stopOpacity: "0.25"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: line,
+    stopOpacity: "0"
+  }))), /*#__PURE__*/React.createElement("line", {
+    x1: pad,
+    y1: zeroY,
+    x2: W - pad,
+    y2: zeroY,
+    stroke: C.dim,
+    strokeWidth: "1",
+    strokeDasharray: "3 4"
+  }), trades.length > 0 && /*#__PURE__*/React.createElement("path", {
+    d: area,
+    fill: "url(#pnlfill)"
+  }), trades.length > 0 && /*#__PURE__*/React.createElement("path", {
+    d: path,
+    fill: "none",
+    stroke: line,
+    strokeWidth: "2.5",
+    strokeLinejoin: "round",
+    strokeLinecap: "round"
+  }), series.map((p, i) => i > 0 && /*#__PURE__*/React.createElement("circle", {
+    key: i,
+    cx: x(i),
+    cy: y(p.pnl),
+    r: "2.6",
+    fill: C.bg,
+    stroke: line,
+    strokeWidth: "1.6"
+  }))), trades.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: -84,
+      marginBottom: 78
+    }
+  }, "Log a trade to start your curve"));
 }
 
 /* ── Strategy tab ────────────────────────────────────────────────────────── */
@@ -532,167 +520,148 @@ function Strategy({
   const rr = (win / loss).toFixed(2);
   const breakeven = loss / (win + loss) * 100; // win-rate needed to net zero (pre-fee)
 
-  return /*#__PURE__*/_jsxs("div", {
-    children: [/*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 14
-      },
-      children: [/*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 10
-        },
-        children: [/*#__PURE__*/_jsx("span", {
-          style: {
-            color: C.sub,
-            fontSize: 13,
-            fontWeight: 600
-          },
-          children: "Entry price per contract (¢)"
-        }), /*#__PURE__*/_jsxs("span", {
-          style: {
-            color: C.blue,
-            fontSize: 28,
-            fontWeight: 900,
-            fontVariantNumeric: "tabular-nums"
-          },
-          children: [entry, "¢"]
-        })]
-      }), /*#__PURE__*/_jsx("input", {
-        type: "range",
-        min: 2,
-        max: 90,
-        step: 1,
-        value: entry,
-        onChange: e => setEntry(+e.target.value),
-        style: {
-          width: "100%",
-          accentColor: C.blue,
-          height: 26
-        }
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          gap: 6,
-          marginTop: 14
-        },
-        children: [/*#__PURE__*/_jsx(Stat, {
-          label: "SELL 2.2x",
-          value: `${sell}¢`,
-          color: C.green
-        }), /*#__PURE__*/_jsx(Stat, {
-          label: "STOP 0.3x",
-          value: `${stop}¢`,
-          color: C.red
-        }), /*#__PURE__*/_jsx(Stat, {
-          label: "WIN",
-          value: `+${win}¢`,
-          color: C.green
-        }), /*#__PURE__*/_jsx(Stat, {
-          label: "RISK",
-          value: `-${loss}¢`,
-          color: C.red
-        })]
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          gap: 6,
-          marginTop: 6
-        },
-        children: [/*#__PURE__*/_jsx(Stat, {
-          label: "REWARD : RISK",
-          value: `${rr} : 1`,
-          color: C.amber
-        }), /*#__PURE__*/_jsx(Stat, {
-          label: "BREAK-EVEN WIN RATE",
-          value: `${breakeven.toFixed(0)}%`,
-          color: C.violet
-        })]
-      })]
-    }), /*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.amber + "0f",
-        border: `1px solid ${C.amber}33`,
-        borderRadius: 14,
-        padding: 14,
-        marginBottom: 14
-      },
-      children: [/*#__PURE__*/_jsx("div", {
-        style: {
-          color: C.amber,
-          fontSize: 12,
-          fontWeight: 800,
-          letterSpacing: 0.4,
-          marginBottom: 6
-        },
-        children: "THE HONEST READ"
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          color: C.text,
-          fontSize: 13,
-          lineHeight: 1.6
-        },
-        children: ["Your ", rr, ":1 reward-to-risk means you only need to win ", /*#__PURE__*/_jsxs("b", {
-          children: [breakeven.toFixed(0), "%"]
-        }), " of trades to break even before fees. The catch: reaching +120% before −70% on a near-random 15-min BTC move happens roughly ", /*#__PURE__*/_jsxs("b", {
-          children: [breakeven.toFixed(0), "%"]
-        }), " of the time too — so the favorable R:R and the lower hit-rate cancel out. Net edge before fees ≈ 0; after Kalshi fees it's slightly negative. The discipline (fixed sell, hard stop, never holding to expiry) is what protects you, not a hidden edge."]
-      })]
-    }), /*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: 14
-      },
-      children: [/*#__PURE__*/_jsx("div", {
-        style: {
-          color: C.cyan,
-          fontSize: 12,
-          fontWeight: 800,
-          letterSpacing: 0.4,
-          marginBottom: 8
-        },
-        children: "YOUR PLAYBOOK"
-      }), [`Limit buy at ${entry}¢ — maker order, no fee if it rests and fills`, `Immediately set limit sell at ${sell}¢`, `Hard stop at ${stop}¢ — no exceptions, no averaging down`, `Exit before expiry every time`, `Risk a fixed, small fraction of bankroll per trade`].map((s, i) => /*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          gap: 10,
-          marginBottom: 7
-        },
-        children: [/*#__PURE__*/_jsx("div", {
-          style: {
-            minWidth: 22,
-            height: 22,
-            borderRadius: "50%",
-            background: C.cyan + "22",
-            color: C.cyan,
-            fontSize: 12,
-            fontWeight: 800,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0
-          },
-          children: i + 1
-        }), /*#__PURE__*/_jsx("div", {
-          style: {
-            color: C.text,
-            fontSize: 13,
-            lineHeight: 1.5,
-            paddingTop: 1
-          },
-          children: s
-        })]
-      }, i))]
-    })]
-  });
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "Entry price per contract (¢)"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.blue,
+      fontSize: 28,
+      fontWeight: 900,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, entry, "¢")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 2,
+    max: 90,
+    step: 1,
+    value: entry,
+    onChange: e => setEntry(+e.target.value),
+    style: {
+      width: "100%",
+      accentColor: C.blue,
+      height: 26
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement(Stat, {
+    label: "SELL 2.2x",
+    value: `${sell}¢`,
+    color: C.green
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "STOP 0.3x",
+    value: `${stop}¢`,
+    color: C.red
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "WIN",
+    value: `+${win}¢`,
+    color: C.green
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "RISK",
+    value: `-${loss}¢`,
+    color: C.red
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement(Stat, {
+    label: "REWARD : RISK",
+    value: `${rr} : 1`,
+    color: C.amber
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "BREAK-EVEN WIN RATE",
+    value: `${breakeven.toFixed(0)}%`,
+    color: C.violet
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.amber + "0f",
+      border: `1px solid ${C.amber}33`,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.amber,
+      fontSize: 12,
+      fontWeight: 800,
+      letterSpacing: 0.4,
+      marginBottom: 6
+    }
+  }, "THE HONEST READ"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.text,
+      fontSize: 13,
+      lineHeight: 1.6
+    }
+  }, "Your ", rr, ":1 reward-to-risk means you only need to win ", /*#__PURE__*/React.createElement("b", null, breakeven.toFixed(0), "%"), " of trades to break even before fees. The catch: reaching +120% before −70% on a near-random 15-min BTC move happens roughly ", /*#__PURE__*/React.createElement("b", null, breakeven.toFixed(0), "%"), " of the time too — so the favorable R:R and the lower hit-rate cancel out. Net edge before fees ≈ 0; after Kalshi fees it's slightly negative. The discipline (fixed sell, hard stop, never holding to expiry) is what protects you, not a hidden edge.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.cyan,
+      fontSize: 12,
+      fontWeight: 800,
+      letterSpacing: 0.4,
+      marginBottom: 8
+    }
+  }, "YOUR PLAYBOOK"), [`Limit buy at ${entry}¢ — maker order, no fee if it rests and fills`, `Immediately set limit sell at ${sell}¢`, `Hard stop at ${stop}¢ — no exceptions, no averaging down`, `Exit before expiry every time`, `Risk a fixed, small fraction of bankroll per trade`].map((s, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      gap: 10,
+      marginBottom: 7
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: "50%",
+      background: C.cyan + "22",
+      color: C.cyan,
+      fontSize: 12,
+      fontWeight: 800,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, i + 1), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.text,
+      fontSize: 13,
+      lineHeight: 1.5,
+      paddingTop: 1
+    }
+  }, s)))));
 }
 
 /* ── Parlay builder (true combined odds) ─────────────────────────────────── */
@@ -720,153 +689,137 @@ function Parlay() {
     p
   } : x));
   const tone = combined >= 50 ? C.green : combined >= 30 ? C.amber : C.red;
-  return /*#__PURE__*/_jsxs("div", {
-    children: [/*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.card,
-        border: `1px solid ${C.violet}33`,
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 14
-      },
-      children: [/*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 4
-        },
-        children: [/*#__PURE__*/_jsx("span", {
-          style: {
-            color: C.sub,
-            fontSize: 12,
-            fontWeight: 600
-          },
-          children: "True combined hit chance"
-        }), /*#__PURE__*/_jsxs("span", {
-          style: {
-            color: tone,
-            fontSize: 34,
-            fontWeight: 900,
-            fontVariantNumeric: "tabular-nums"
-          },
-          children: [combined.toFixed(1), "%"]
-        })]
-      }), /*#__PURE__*/_jsx("div", {
-        style: {
-          height: 8,
-          background: C.dim,
-          borderRadius: 4,
-          overflow: "hidden",
-          margin: "8px 0 10px"
-        },
-        children: /*#__PURE__*/_jsx("div", {
-          style: {
-            height: "100%",
-            width: `${Math.min(100, combined)}%`,
-            background: tone,
-            borderRadius: 4
-          }
-        })
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          color: C.sub,
-          fontSize: 12,
-          lineHeight: 1.5
-        },
-        children: ["To break even, this ", legs.length, "-leg parlay needs to pay at least ", /*#__PURE__*/_jsxs("b", {
-          style: {
-            color: C.text
-          },
-          children: [fairOdds.toFixed(2), "x"]
-        }), ". Anything the book offers below that is a losing bet over time. Each leg you add divides this number down."]
-      })]
-    }), legs.map((l, i) => /*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: 14,
-        marginBottom: 10
-      },
-      children: [/*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8
-        },
-        children: [/*#__PURE__*/_jsxs("span", {
-          style: {
-            color: C.text,
-            fontSize: 13,
-            fontWeight: 700
-          },
-          children: ["Leg ", i + 1]
-        }), /*#__PURE__*/_jsxs("div", {
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: 10
-          },
-          children: [/*#__PURE__*/_jsxs("span", {
-            style: {
-              color: l.p >= 60 ? C.green : C.amber,
-              fontSize: 16,
-              fontWeight: 800
-            },
-            children: [l.p, "%"]
-          }), legs.length > 1 && /*#__PURE__*/_jsx("button", {
-            onClick: () => remove(l.id),
-            style: {
-              background: "none",
-              border: "none",
-              color: C.red,
-              fontSize: 18,
-              cursor: "pointer",
-              padding: 0,
-              lineHeight: 1
-            },
-            children: "×"
-          })]
-        })]
-      }), /*#__PURE__*/_jsx("div", {
-        style: {
-          color: C.dim,
-          fontSize: 11,
-          marginBottom: 6
-        },
-        children: "Your honest estimate of this leg hitting"
-      }), /*#__PURE__*/_jsx("input", {
-        type: "range",
-        min: 5,
-        max: 95,
-        step: 1,
-        value: l.p,
-        onChange: e => setP(l.id, +e.target.value),
-        style: {
-          width: "100%",
-          accentColor: C.violet,
-          height: 24
-        }
-      })]
-    }, l.id)), /*#__PURE__*/_jsx("button", {
-      onClick: add,
-      style: {
-        width: "100%",
-        padding: 13,
-        borderRadius: 12,
-        border: `1px dashed ${C.violet}66`,
-        background: C.violet + "12",
-        color: C.violet,
-        fontSize: 14,
-        fontWeight: 700,
-        cursor: "pointer",
-        fontFamily: "inherit"
-      },
-      children: "+ Add leg"
-    })]
-  });
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.violet}33`,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, "True combined hit chance"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: tone,
+      fontSize: 34,
+      fontWeight: 900,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, combined.toFixed(1), "%")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 8,
+      background: C.dim,
+      borderRadius: 4,
+      overflow: "hidden",
+      margin: "8px 0 10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: "100%",
+      width: `${Math.min(100, combined)}%`,
+      background: tone,
+      borderRadius: 4
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 12,
+      lineHeight: 1.5
+    }
+  }, "To break even, this ", legs.length, "-leg parlay needs to pay at least ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: C.text
+    }
+  }, fairOdds.toFixed(2), "x"), ". Anything the book offers below that is a losing bet over time. Each leg you add divides this number down.")), legs.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: l.id,
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.text,
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "Leg ", i + 1), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: l.p >= 60 ? C.green : C.amber,
+      fontSize: 16,
+      fontWeight: 800
+    }
+  }, l.p, "%"), legs.length > 1 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => remove(l.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: C.red,
+      fontSize: 18,
+      cursor: "pointer",
+      padding: 0,
+      lineHeight: 1
+    }
+  }, "×"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      marginBottom: 6
+    }
+  }, "Your honest estimate of this leg hitting"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 5,
+    max: 95,
+    step: 1,
+    value: l.p,
+    onChange: e => setP(l.id, +e.target.value),
+    style: {
+      width: "100%",
+      accentColor: C.violet,
+      height: 24
+    }
+  }))), /*#__PURE__*/React.createElement("button", {
+    onClick: add,
+    style: {
+      width: "100%",
+      padding: 13,
+      borderRadius: 12,
+      border: `1px dashed ${C.violet}66`,
+      background: C.violet + "12",
+      color: C.violet,
+      fontSize: 14,
+      fontWeight: 700,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "+ Add leg"));
 }
 
 /* ── Trade log + PnL ─────────────────────────────────────────────────────── */
@@ -894,180 +847,166 @@ function Log({
   const total = trades.reduce((a, t) => a + t.pnl, 0);
   const wins = trades.filter(t => t.win).length;
   const rate = trades.length ? wins / trades.length * 100 : 0;
-  return /*#__PURE__*/_jsxs("div", {
-    children: [/*#__PURE__*/_jsx(PnLChart, {
-      trades: trades
-    }), /*#__PURE__*/_jsxs("div", {
-      style: {
-        display: "flex",
-        gap: 6,
-        margin: "14px 0"
-      },
-      children: [/*#__PURE__*/_jsx(Stat, {
-        label: "TRADES",
-        value: trades.length
-      }), /*#__PURE__*/_jsx(Stat, {
-        label: "WIN RATE",
-        value: `${rate.toFixed(0)}%`,
-        color: rate >= 37 ? C.green : C.amber
-      }), /*#__PURE__*/_jsx(Stat, {
-        label: "NET",
-        value: money(total),
-        color: total >= 0 ? C.green : C.red
-      })]
-    }), /*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: 14,
-        marginBottom: 14
-      },
-      children: [/*#__PURE__*/_jsx("div", {
-        style: {
-          color: C.sub,
-          fontSize: 12,
-          fontWeight: 600,
-          marginBottom: 8
-        },
-        children: "Log a trade"
-      }), /*#__PURE__*/_jsx("input", {
-        value: label,
-        onChange: e => setLabel(e.target.value),
-        placeholder: "Market (optional) e.g. BTC 2:15pm UP",
-        style: {
-          width: "100%",
-          boxSizing: "border-box",
-          background: C.bg,
-          border: `1px solid ${C.border}`,
-          borderRadius: 10,
-          padding: "11px 12px",
-          color: C.text,
-          fontSize: 14,
-          fontFamily: "inherit",
-          marginBottom: 12
-        }
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 4
-        },
-        children: [/*#__PURE__*/_jsx("span", {
-          style: {
-            color: C.sub,
-            fontSize: 12
-          },
-          children: "Stake"
-        }), /*#__PURE__*/_jsxs("span", {
-          style: {
-            color: C.blue,
-            fontSize: 18,
-            fontWeight: 800
-          },
-          children: ["$", stake]
-        })]
-      }), /*#__PURE__*/_jsx("input", {
-        type: "range",
-        min: 2,
-        max: 200,
-        step: 1,
-        value: stake,
-        onChange: e => setStake(+e.target.value),
-        style: {
-          width: "100%",
-          accentColor: C.blue,
-          height: 24,
-          marginBottom: 12
-        }
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          gap: 8
-        },
-        children: [/*#__PURE__*/_jsxs("button", {
-          onClick: () => record(true),
-          style: {
-            flex: 1,
-            padding: 13,
-            borderRadius: 12,
-            border: "none",
-            background: C.green,
-            color: "#04140f",
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: "pointer",
-            fontFamily: "inherit"
-          },
-          children: ["Win +", money(win / 100 * Math.max(1, Math.round(stake / (entry / 100))))]
-        }), /*#__PURE__*/_jsxs("button", {
-          onClick: () => record(false),
-          style: {
-            flex: 1,
-            padding: 13,
-            borderRadius: 12,
-            border: "none",
-            background: C.red,
-            color: "#1a060a",
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: "pointer",
-            fontFamily: "inherit"
-          },
-          children: ["Loss −", money(loss / 100 * Math.max(1, Math.round(stake / (entry / 100))))]
-        })]
-      })]
-    }), trades.slice().reverse().map(t => /*#__PURE__*/_jsxs("div", {
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
-        padding: "11px 13px",
-        marginBottom: 8
-      },
-      children: [/*#__PURE__*/_jsx("div", {
-        style: {
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: t.win ? C.green : C.red,
-          flexShrink: 0
-        }
-      }), /*#__PURE__*/_jsx("div", {
-        style: {
-          flex: 1,
-          color: C.text,
-          fontSize: 13,
-          fontWeight: 600
-        },
-        children: t.label
-      }), /*#__PURE__*/_jsxs("div", {
-        style: {
-          color: t.pnl >= 0 ? C.green : C.red,
-          fontSize: 14,
-          fontWeight: 800,
-          fontVariantNumeric: "tabular-nums"
-        },
-        children: [t.pnl >= 0 ? "+" : "", money(t.pnl)]
-      }), /*#__PURE__*/_jsx("button", {
-        onClick: () => setTrades(x => x.filter(y => y.id !== t.id)),
-        style: {
-          background: "none",
-          border: "none",
-          color: C.dim,
-          fontSize: 17,
-          cursor: "pointer",
-          padding: 0,
-          lineHeight: 1
-        },
-        children: "×"
-      })]
-    }, t.id))]
-  });
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(PnLChart, {
+    trades: trades
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      margin: "14px 0"
+    }
+  }, /*#__PURE__*/React.createElement(Stat, {
+    label: "TRADES",
+    value: trades.length
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "WIN RATE",
+    value: `${rate.toFixed(0)}%`,
+    color: rate >= 37 ? C.green : C.amber
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "NET",
+    value: money(total),
+    color: total >= 0 ? C.green : C.red
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 12,
+      fontWeight: 600,
+      marginBottom: 8
+    }
+  }, "Log a trade"), /*#__PURE__*/React.createElement("input", {
+    value: label,
+    onChange: e => setLabel(e.target.value),
+    placeholder: "Market (optional) e.g. BTC 2:15pm UP",
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      background: C.bg,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: "11px 12px",
+      color: C.text,
+      fontSize: 14,
+      fontFamily: "inherit",
+      marginBottom: 12
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12
+    }
+  }, "Stake"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.blue,
+      fontSize: 18,
+      fontWeight: 800
+    }
+  }, "$", stake)), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 2,
+    max: 200,
+    step: 1,
+    value: stake,
+    onChange: e => setStake(+e.target.value),
+    style: {
+      width: "100%",
+      accentColor: C.blue,
+      height: 24,
+      marginBottom: 12
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => record(true),
+    style: {
+      flex: 1,
+      padding: 13,
+      borderRadius: 12,
+      border: "none",
+      background: C.green,
+      color: "#04140f",
+      fontSize: 14,
+      fontWeight: 800,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "Win +", money(win / 100 * Math.max(1, Math.round(stake / (entry / 100))))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => record(false),
+    style: {
+      flex: 1,
+      padding: 13,
+      borderRadius: 12,
+      border: "none",
+      background: C.red,
+      color: "#1a060a",
+      fontSize: 14,
+      fontWeight: 800,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "Loss −", money(loss / 100 * Math.max(1, Math.round(stake / (entry / 100))))))), trades.slice().reverse().map(t => /*#__PURE__*/React.createElement("div", {
+    key: t.id,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: "11px 13px",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: t.win ? C.green : C.red,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      color: C.text,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, t.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: t.pnl >= 0 ? C.green : C.red,
+      fontSize: 14,
+      fontWeight: 800,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, t.pnl >= 0 ? "+" : "", money(t.pnl)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setTrades(x => x.filter(y => y.id !== t.id)),
+    style: {
+      background: "none",
+      border: "none",
+      color: C.dim,
+      fontSize: 17,
+      cursor: "pointer",
+      padding: 0,
+      lineHeight: 1
+    }
+  }, "×"))));
 }
 
 /* ── Root ────────────────────────────────────────────────────────────────── */
@@ -1095,7 +1034,7 @@ function Cockpit() {
     return () => clearInterval(t);
   }, []);
   const tabs = [["strategy", "Strategy"], ["parlay", "Parlay"], ["log", "P&L Log"]];
-  return /*#__PURE__*/_jsxs("div", {
+  return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
       background: C.bg,
@@ -1103,100 +1042,88 @@ function Cockpit() {
       fontFamily: "-apple-system,'SF Pro Text','Helvetica Neue',sans-serif",
       WebkitFontSmoothing: "antialiased",
       paddingBottom: 60
-    },
-    children: [/*#__PURE__*/_jsxs("div", {
-      style: {
-        background: C.panel,
-        borderBottom: `1px solid ${C.border}`,
-        padding: "16px 16px 0",
-        position: "sticky",
-        top: 0,
-        zIndex: 10
-      },
-      children: [/*#__PURE__*/_jsxs("div", {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 14
-        },
-        children: [/*#__PURE__*/_jsxs("div", {
-          children: [/*#__PURE__*/_jsx("div", {
-            style: {
-              color: C.text,
-              fontSize: 19,
-              fontWeight: 900,
-              letterSpacing: -0.3
-            },
-            children: "Kalshi Cockpit"
-          }), /*#__PURE__*/_jsxs("div", {
-            style: {
-              color: C.sub,
-              fontSize: 12,
-              marginTop: 2,
-              fontVariantNumeric: "tabular-nums"
-            },
-            children: [clock, " · Los Angeles"]
-          })]
-        }), /*#__PURE__*/_jsxs("div", {
-          style: {
-            textAlign: "right"
-          },
-          children: [/*#__PURE__*/_jsx("div", {
-            style: {
-              color: C.amber,
-              fontSize: 20,
-              fontWeight: 900,
-              fontVariantNumeric: "tabular-nums"
-            },
-            children: btc ? `$${Math.round(btc).toLocaleString()}` : "—"
-          }), /*#__PURE__*/_jsx("div", {
-            style: {
-              color: C.sub,
-              fontSize: 11
-            },
-            children: "BTC spot · live"
-          })]
-        })]
-      }), /*#__PURE__*/_jsx("div", {
-        style: {
-          display: "flex"
-        },
-        children: tabs.map(([id, lbl]) => /*#__PURE__*/_jsx("button", {
-          onClick: () => setTab(id),
-          style: {
-            flex: 1,
-            padding: "11px 4px",
-            background: "none",
-            border: "none",
-            borderBottom: tab === id ? `2px solid ${C.blue}` : "2px solid transparent",
-            color: tab === id ? C.text : C.sub,
-            fontFamily: "inherit",
-            fontSize: 13,
-            fontWeight: 800,
-            cursor: "pointer"
-          },
-          children: lbl
-        }, id))
-      })]
-    }), /*#__PURE__*/_jsxs("div", {
-      style: {
-        padding: 16,
-        maxWidth: 480,
-        margin: "0 auto"
-      },
-      children: [tab === "strategy" && /*#__PURE__*/_jsx(Strategy, {
-        entry: entry,
-        setEntry: setEntry
-      }), tab === "parlay" && /*#__PURE__*/_jsx(Parlay, {}), tab === "log" && /*#__PURE__*/_jsx(Log, {
-        trades: trades,
-        setTrades: setTrades,
-        entry: entry
-      })]
-    })]
-  });
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.panel,
+      borderBottom: `1px solid ${C.border}`,
+      padding: "16px 16px 0",
+      position: "sticky",
+      top: 0,
+      zIndex: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.text,
+      fontSize: 19,
+      fontWeight: 900,
+      letterSpacing: -0.3
+    }
+  }, "Kalshi Cockpit"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 12,
+      marginTop: 2,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, clock, " · Los Angeles")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.amber,
+      fontSize: 20,
+      fontWeight: 900,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, btc ? `$${Math.round(btc).toLocaleString()}` : "—"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 11
+    }
+  }, "BTC spot · live"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex"
+    }
+  }, tabs.map(([id, lbl]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    onClick: () => setTab(id),
+    style: {
+      flex: 1,
+      padding: "11px 4px",
+      background: "none",
+      border: "none",
+      borderBottom: tab === id ? `2px solid ${C.blue}` : "2px solid transparent",
+      color: tab === id ? C.text : C.sub,
+      fontFamily: "inherit",
+      fontSize: 13,
+      fontWeight: 800,
+      cursor: "pointer"
+    }
+  }, lbl)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 16,
+      maxWidth: 480,
+      margin: "0 auto"
+    }
+  }, tab === "strategy" && /*#__PURE__*/React.createElement(Strategy, {
+    entry: entry,
+    setEntry: setEntry
+  }), tab === "parlay" && /*#__PURE__*/React.createElement(Parlay, null), tab === "log" && /*#__PURE__*/React.createElement(Log, {
+    trades: trades,
+    setTrades: setTrades,
+    entry: entry
+  })));
 }
-ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/_jsx(Cockpit, {}));
+ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(Cockpit, null));
 } catch (e) {
   var f=document.getElementById('fallback');
   f.style.display='block';

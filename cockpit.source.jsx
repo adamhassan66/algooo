@@ -163,50 +163,100 @@ function Strategy({ entry, setEntry }) {
   );
 }
 
-/* ── Parlay builder (true combined odds) ─────────────────────────────────── */
+/* ── Parlay reality-checker (baseball "1+ hits" props) ───────────────────── */
+// Typical P(1+ hits in a game) by hitter tier — even stars sit ~70-75%.
+const TIERS = [["Star", 74], ["Regular", 68], ["Platoon", 60]];
+
 function Parlay() {
-  const [legs, setLegs] = useState([
-    { id: 1, name: "Leg 1", p: 70 },
-    { id: 2, name: "Leg 2", p: 65 },
+  const [legs, setLegs] = usePersist("kc_parlay", [
+    { id: 1, name: "Star hitter · 1+ hits", p: 74 },
+    { id: 2, name: "Star hitter · 1+ hits", p: 74 },
+    { id: 3, name: "Regular · 1+ hits", p: 68 },
   ]);
+  const [target, setTarget] = usePersist("kc_parlay_tgt", 80); // confidence bar %
+  const [payout, setPayout] = usePersist("kc_parlay_pay", 0);  // book's total-return multiple
 
-  const combined = legs.reduce((a, l) => a * (l.p / 100), 1) * 100;
-  const fairOdds = combined > 0 ? (100 / combined) : 0; // decimal odds you'd need just to break even
+  const probs = legs.map((l) => l.p / 100);
+  const combined = probs.reduce((a, p) => a * p, 1) * 100;
+  const fairOdds = combined > 0 ? 100 / combined : 0;
+  const avgP = legs.length ? probs.reduce((a, p) => a + p, 0) / legs.length : 0.7;
+  const maxLegs = avgP > 0 && avgP < 1 ? Math.max(0, Math.floor(Math.log(target / 100) / Math.log(avgP))) : 0;
+  const ev = payout > 0 ? (combined / 100) * payout - 1 : null; // per $1 staked
 
-  const add = () => setLegs((l) => [...l, { id: Date.now(), name: `Leg ${l.length + 1}`, p: 60 }]);
+  const add = () => setLegs((l) => [...l, { id: Date.now(), name: "Regular · 1+ hits", p: 68 }]);
   const remove = (id) => setLegs((l) => l.filter((x) => x.id !== id));
   const setP = (id, p) => setLegs((l) => l.map((x) => (x.id === id ? { ...x, p } : x)));
+  const setName = (id, name) => setLegs((l) => l.map((x) => (x.id === id ? { ...x, name } : x)));
 
-  const tone = combined >= 50 ? C.green : combined >= 30 ? C.amber : C.red;
+  const tone = combined >= target ? C.green : combined >= target * 0.6 ? C.amber : C.red;
+  const inputStyle = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 9px", color: C.text, fontSize: 13, fontFamily: "inherit" };
 
   return (
     <div>
       <div style={{ background: C.card, border: `1px solid ${C.violet}33`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-          <span style={{ color: C.sub, fontSize: 12, fontWeight: 600 }}>True combined hit chance</span>
+          <span style={{ color: C.sub, fontSize: 12, fontWeight: 600 }}>True combined hit chance · {legs.length} legs</span>
           <span style={{ color: tone, fontSize: 34, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{combined.toFixed(1)}%</span>
         </div>
-        <div style={{ height: 8, background: C.dim, borderRadius: 4, overflow: "hidden", margin: "8px 0 10px" }}>
+        <div style={{ height: 8, background: C.dim, borderRadius: 4, overflow: "hidden", margin: "8px 0 4px", position: "relative" }}>
           <div style={{ height: "100%", width: `${Math.min(100, combined)}%`, background: tone, borderRadius: 4 }} />
+          <div style={{ position: "absolute", top: -2, left: `${target}%`, width: 2, height: 12, background: C.text }} title="your target" />
         </div>
+        <div style={{ color: C.dim, fontSize: 11, marginBottom: 10 }}>white mark = your {target}% bar</div>
         <div style={{ color: C.sub, fontSize: 12, lineHeight: 1.5 }}>
-          To break even, this {legs.length}-leg parlay needs to pay at least <b style={{ color: C.text }}>{fairOdds.toFixed(2)}x</b>.
-          Anything the book offers below that is a losing bet over time. Each leg you add divides this number down.
+          Break-even payout: needs to pay at least <b style={{ color: C.text }}>{fairOdds.toFixed(2)}×</b> your stake.
+          Each leg you add multiplies this chance <i>down</i> — a parlay is the opposite of a sure thing.
         </div>
+      </div>
+
+      {/* reality helper */}
+      <div style={{ background: combined >= target ? C.green + "12" : C.amber + "10", border: `1px solid ${combined >= target ? C.green : C.amber}44`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Confidence bar</span>
+          <span style={{ color: C.text, fontSize: 16, fontWeight: 800 }}>{target}%</span>
+        </div>
+        <input type="range" min={50} max={99} step={1} value={target} onChange={(e) => setTarget(+e.target.value)}
+          style={{ width: "100%", accentColor: C.violet, height: 24, marginBottom: 6 }} />
+        <div style={{ color: C.text, fontSize: 13, lineHeight: 1.55 }}>
+          {combined >= target
+            ? `This combo clears your ${target}% bar.`
+            : `This combo is ${combined.toFixed(1)}% — below your ${target}% bar.`}{" "}
+          At your average leg (~{(avgP * 100).toFixed(0)}%), the most legs you can stack and still stay ≥{target}% is{" "}
+          <b style={{ color: maxLegs >= legs.length ? C.green : C.red }}>{maxLegs}</b>.
+          {maxLegs === 0 && ` Even one ${(avgP * 100).toFixed(0)}% leg falls short of ${target}% — the closest thing to a lock is a single best leg.`}
+        </div>
+      </div>
+
+      {/* optional EV check */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: C.sub, fontSize: 12 }}>Book pays (× your stake)</span>
+          <input type="number" value={payout || ""} onChange={(e) => setPayout(+e.target.value || 0)} placeholder="e.g. 6" style={{ ...inputStyle, width: 70, textAlign: "right" }} />
+        </div>
+        {ev != null && (
+          <div style={{ marginTop: 8, fontSize: 13, color: ev >= 0 ? C.green : C.red, fontWeight: 700 }}>
+            EV ≈ {ev >= 0 ? "+" : ""}{(ev * 100).toFixed(0)}% per $1. {ev >= 0 ? "Rare — only if your hit-rates are honest." : `Negative — it pays ${payout}× but needs ${fairOdds.toFixed(2)}× to be fair.`}
+          </div>
+        )}
       </div>
 
       {legs.map((l, i) => (
         <div key={l.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>Leg {i + 1}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ color: l.p >= 60 ? C.green : C.amber, fontSize: 16, fontWeight: 800 }}>{l.p}%</span>
-              {legs.length > 1 && (
-                <button onClick={() => remove(l.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>×</button>
-              )}
-            </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
+            <input value={l.name} onChange={(e) => setName(l.id, e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+            <span style={{ color: l.p >= 70 ? C.green : l.p >= 60 ? C.amber : C.red, fontSize: 16, fontWeight: 800 }}>{l.p}%</span>
+            {legs.length > 1 && (
+              <button onClick={() => remove(l.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>×</button>
+            )}
           </div>
-          <div style={{ color: C.dim, fontSize: 11, marginBottom: 6 }}>Your honest estimate of this leg hitting</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {TIERS.map(([lbl, val]) => (
+              <button key={lbl} onClick={() => setP(l.id, val)} style={{
+                flex: 1, background: l.p === val ? C.violet + "22" : C.bg, border: `1px solid ${l.p === val ? C.violet : C.border}`,
+                color: l.p === val ? C.violet : C.sub, fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "6px 4px", cursor: "pointer", fontFamily: "inherit",
+              }}>{lbl} {val}%</button>
+            ))}
+          </div>
           <input type="range" min={5} max={95} step={1} value={l.p} onChange={(e) => setP(l.id, +e.target.value)}
             style={{ width: "100%", accentColor: C.violet, height: 24 }} />
         </div>
@@ -216,6 +266,10 @@ function Parlay() {
         width: "100%", padding: 13, borderRadius: 12, border: `1px dashed ${C.violet}66`,
         background: C.violet + "12", color: C.violet, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
       }}>+ Add leg</button>
+
+      <div style={{ color: C.dim, fontSize: 11, lineHeight: 1.5, marginTop: 12 }}>
+        Reality check: a 14-leg "1+ hits" combo at ~72%/leg is ≈1% to hit — about 1 in 80. In the screenshot you sent, 4 legs had already missed. Hit props feel safe; stacking them is what makes the parlay unlikely.
+      </div>
     </div>
   );
 }

@@ -699,31 +699,57 @@ function Strategy({
   }, s)))));
 }
 
-/* ── Parlay builder (true combined odds) ─────────────────────────────────── */
+/* ── Parlay reality-checker (baseball "1+ hits" props) ───────────────────── */
+// Typical P(1+ hits in a game) by hitter tier — even stars sit ~70-75%.
+const TIERS = [["Star", 74], ["Regular", 68], ["Platoon", 60]];
 function Parlay() {
-  const [legs, setLegs] = useState([{
+  const [legs, setLegs] = usePersist("kc_parlay", [{
     id: 1,
-    name: "Leg 1",
-    p: 70
+    name: "Star hitter · 1+ hits",
+    p: 74
   }, {
     id: 2,
-    name: "Leg 2",
-    p: 65
+    name: "Star hitter · 1+ hits",
+    p: 74
+  }, {
+    id: 3,
+    name: "Regular · 1+ hits",
+    p: 68
   }]);
-  const combined = legs.reduce((a, l) => a * (l.p / 100), 1) * 100;
-  const fairOdds = combined > 0 ? 100 / combined : 0; // decimal odds you'd need just to break even
+  const [target, setTarget] = usePersist("kc_parlay_tgt", 80); // confidence bar %
+  const [payout, setPayout] = usePersist("kc_parlay_pay", 0); // book's total-return multiple
+
+  const probs = legs.map(l => l.p / 100);
+  const combined = probs.reduce((a, p) => a * p, 1) * 100;
+  const fairOdds = combined > 0 ? 100 / combined : 0;
+  const avgP = legs.length ? probs.reduce((a, p) => a + p, 0) / legs.length : 0.7;
+  const maxLegs = avgP > 0 && avgP < 1 ? Math.max(0, Math.floor(Math.log(target / 100) / Math.log(avgP))) : 0;
+  const ev = payout > 0 ? combined / 100 * payout - 1 : null; // per $1 staked
 
   const add = () => setLegs(l => [...l, {
     id: Date.now(),
-    name: `Leg ${l.length + 1}`,
-    p: 60
+    name: "Regular · 1+ hits",
+    p: 68
   }]);
   const remove = id => setLegs(l => l.filter(x => x.id !== id));
   const setP = (id, p) => setLegs(l => l.map(x => x.id === id ? {
     ...x,
     p
   } : x));
-  const tone = combined >= 50 ? C.green : combined >= 30 ? C.amber : C.red;
+  const setName = (id, name) => setLegs(l => l.map(x => x.id === id ? {
+    ...x,
+    name
+  } : x));
+  const tone = combined >= target ? C.green : combined >= target * 0.6 ? C.amber : C.red;
+  const inputStyle = {
+    background: C.bg,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: "7px 9px",
+    color: C.text,
+    fontSize: 13,
+    fontFamily: "inherit"
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       background: C.card,
@@ -745,7 +771,7 @@ function Parlay() {
       fontSize: 12,
       fontWeight: 600
     }
-  }, "True combined hit chance"), /*#__PURE__*/React.createElement("span", {
+  }, "True combined hit chance · ", legs.length, " legs"), /*#__PURE__*/React.createElement("span", {
     style: {
       color: tone,
       fontSize: 34,
@@ -758,7 +784,8 @@ function Parlay() {
       background: C.dim,
       borderRadius: 4,
       overflow: "hidden",
-      margin: "8px 0 10px"
+      margin: "8px 0 4px",
+      position: "relative"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -767,17 +794,117 @@ function Parlay() {
       background: tone,
       borderRadius: 4
     }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: -2,
+      left: `${target}%`,
+      width: 2,
+      height: 12,
+      background: C.text
+    },
+    title: "your target"
   })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      marginBottom: 10
+    }
+  }, "white mark = your ", target, "% bar"), /*#__PURE__*/React.createElement("div", {
     style: {
       color: C.sub,
       fontSize: 12,
       lineHeight: 1.5
     }
-  }, "To break even, this ", legs.length, "-leg parlay needs to pay at least ", /*#__PURE__*/React.createElement("b", {
+  }, "Break-even payout: needs to pay at least ", /*#__PURE__*/React.createElement("b", {
     style: {
       color: C.text
     }
-  }, fairOdds.toFixed(2), "x"), ". Anything the book offers below that is a losing bet over time. Each leg you add divides this number down.")), legs.map((l, i) => /*#__PURE__*/React.createElement("div", {
+  }, fairOdds.toFixed(2), "×"), " your stake. Each leg you add multiplies this chance ", /*#__PURE__*/React.createElement("i", null, "down"), " — a parlay is the opposite of a sure thing.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: combined >= target ? C.green + "12" : C.amber + "10",
+      border: `1px solid ${combined >= target ? C.green : C.amber}44`,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12
+    }
+  }, "Confidence bar"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.text,
+      fontSize: 16,
+      fontWeight: 800
+    }
+  }, target, "%")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 50,
+    max: 99,
+    step: 1,
+    value: target,
+    onChange: e => setTarget(+e.target.value),
+    style: {
+      width: "100%",
+      accentColor: C.violet,
+      height: 24,
+      marginBottom: 6
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.text,
+      fontSize: 13,
+      lineHeight: 1.55
+    }
+  }, combined >= target ? `This combo clears your ${target}% bar.` : `This combo is ${combined.toFixed(1)}% — below your ${target}% bar.`, " ", "At your average leg (~", (avgP * 100).toFixed(0), "%), the most legs you can stack and still stay ≥", target, "% is", " ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: maxLegs >= legs.length ? C.green : C.red
+    }
+  }, maxLegs), ".", maxLegs === 0 && ` Even one ${(avgP * 100).toFixed(0)}% leg falls short of ${target}% — the closest thing to a lock is a single best leg.`)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.sub,
+      fontSize: 12
+    }
+  }, "Book pays (× your stake)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: payout || "",
+    onChange: e => setPayout(+e.target.value || 0),
+    placeholder: "e.g. 6",
+    style: {
+      ...inputStyle,
+      width: 70,
+      textAlign: "right"
+    }
+  })), ev != null && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      fontSize: 13,
+      color: ev >= 0 ? C.green : C.red,
+      fontWeight: 700
+    }
+  }, "EV ≈ ", ev >= 0 ? "+" : "", (ev * 100).toFixed(0), "% per $1. ", ev >= 0 ? "Rare — only if your hit-rates are honest." : `Negative — it pays ${payout}× but needs ${fairOdds.toFixed(2)}× to be fair.`)), legs.map((l, i) => /*#__PURE__*/React.createElement("div", {
     key: l.id,
     style: {
       background: C.card,
@@ -791,23 +918,20 @@ function Parlay() {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 8
+      marginBottom: 8,
+      gap: 8
     }
-  }, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("input", {
+    value: l.name,
+    onChange: e => setName(l.id, e.target.value),
     style: {
-      color: C.text,
-      fontSize: 13,
-      fontWeight: 700
+      ...inputStyle,
+      flex: 1,
+      minWidth: 0
     }
-  }, "Leg ", i + 1), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", {
     style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: l.p >= 60 ? C.green : C.amber,
+      color: l.p >= 70 ? C.green : l.p >= 60 ? C.amber : C.red,
       fontSize: 16,
       fontWeight: 800
     }
@@ -822,13 +946,28 @@ function Parlay() {
       padding: 0,
       lineHeight: 1
     }
-  }, "×"))), /*#__PURE__*/React.createElement("div", {
+  }, "×")), /*#__PURE__*/React.createElement("div", {
     style: {
-      color: C.dim,
-      fontSize: 11,
-      marginBottom: 6
+      display: "flex",
+      gap: 6,
+      marginBottom: 8
     }
-  }, "Your honest estimate of this leg hitting"), /*#__PURE__*/React.createElement("input", {
+  }, TIERS.map(([lbl, val]) => /*#__PURE__*/React.createElement("button", {
+    key: lbl,
+    onClick: () => setP(l.id, val),
+    style: {
+      flex: 1,
+      background: l.p === val ? C.violet + "22" : C.bg,
+      border: `1px solid ${l.p === val ? C.violet : C.border}`,
+      color: l.p === val ? C.violet : C.sub,
+      fontSize: 11,
+      fontWeight: 700,
+      borderRadius: 8,
+      padding: "6px 4px",
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, lbl, " ", val, "%"))), /*#__PURE__*/React.createElement("input", {
     type: "range",
     min: 5,
     max: 95,
@@ -854,7 +993,14 @@ function Parlay() {
       cursor: "pointer",
       fontFamily: "inherit"
     }
-  }, "+ Add leg"));
+  }, "+ Add leg"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      lineHeight: 1.5,
+      marginTop: 12
+    }
+  }, "Reality check: a 14-leg \"1+ hits\" combo at ~72%/leg is ≈1% to hit — about 1 in 80. In the screenshot you sent, 4 legs had already missed. Hit props feel safe; stacking them is what makes the parlay unlikely."));
 }
 
 /* ── Trade log + PnL ─────────────────────────────────────────────────────── */

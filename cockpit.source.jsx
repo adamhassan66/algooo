@@ -271,7 +271,17 @@ function Log({ trades, setTrades, entry }) {
 // Returns the nearest-to-close open BTC market, or a status. Never throws to
 // the UI — failures become {status:"blocked"|"nomarket"} so the bot/clock
 // keep working off Coinbase + the wall clock.
-async function fetchKalshiBtc() {
+async function fetchKalshiBtc(proxy, token) {
+  // Preferred path: your own read-only Cloudflare Worker (no CORS, no keys
+  // in the app). See kalshi-proxy/ for the deployable Worker.
+  if (proxy) {
+    try {
+      const r = await fetch(proxy.replace(/\/$/, "") + "/btc", { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!r.ok) return { status: "proxyerr", msg: "proxy " + r.status };
+      return await r.json(); // { status:"ok", market } | { status:"nomarket" }
+    } catch (e) { return { status: "proxyerr", msg: String((e && e.message) || e) }; }
+  }
+  // Fallback: direct browser fetch (usually CORS-blocked on a phone).
   const base = "https://api.elections.kalshi.com/trade-api/v2";
   const candidates = ["KXBTCD", "KXBTC", "KXBTCRANGE", "KXBTC15", "KXBTCMINI"];
   let best = null, scanned = 0, reached = false;
@@ -326,6 +336,10 @@ function PaperTrade({ btc }) {
   const [now, setNow] = useState(Date.now());
   const [kalshi, setKalshi] = useState({ status: "idle" });
   const [botLog, setBotLog] = useState([]);
+  const [proxy, setProxy] = usePersist("kc_proxy", "");
+  const [token, setToken] = usePersist("kc_token", "");
+  const [realBal, setRealBal] = useState(null);
+  const [showConnect, setShowConnect] = useState(false);
   const btcRef = useRef(btc);
   btcRef.current = btc;
   const priceHist = useRef([]);
@@ -340,14 +354,27 @@ function PaperTrade({ btc }) {
     while (a.length > 130) a.shift();
   }, [btc]);
 
-  // poll the real Kalshi market (best effort)
+  // poll the real Kalshi market via your proxy (best effort)
   useEffect(() => {
     let live = true;
-    const run = () => fetchKalshiBtc().then((r) => { if (live) setKalshi(r); }).catch((e) => { if (live) setKalshi({ status: "blocked", msg: String(e.message || e) }); });
+    const run = () => fetchKalshiBtc(proxy, token).then((r) => { if (live) setKalshi(r); }).catch((e) => { if (live) setKalshi({ status: "blocked", msg: String(e.message || e) }); });
     run();
     const t = setInterval(run, 30000);
     return () => { live = false; clearInterval(t); };
-  }, []);
+  }, [proxy, token]);
+
+  // read-only real balance, only if the proxy + key are configured
+  useEffect(() => {
+    if (!proxy) { setRealBal(null); return; }
+    let live = true;
+    const run = () => fetch(proxy.replace(/\/$/, "") + "/balance", { headers: token ? { Authorization: "Bearer " + token } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d && typeof d.balance === "number") setRealBal(d.balance); })
+      .catch(() => {});
+    run();
+    const t = setInterval(run, 30000);
+    return () => { live = false; clearInterval(t); };
+  }, [proxy, token]);
 
   // BTC change over the last ~2 minutes (the bot's signal)
   const momentum = () => {
@@ -435,11 +462,14 @@ function PaperTrade({ btc }) {
   );
 
   const kStatus = {
-    idle: "Connecting to Kalshi…",
+    idle: proxy ? "Connecting to your Kalshi proxy…" : "Not connected. Add your read-only proxy below to see live odds.",
     ok: null,
     nomarket: "Reached Kalshi, but found no open BTC market right now.",
-    blocked: "Kalshi API blocked by the browser (CORS). Bot runs on the Coinbase price + the 15-min clock instead.",
+    proxyerr: `Proxy error (${kalshi.msg || "?"}). Check the URL/token below.`,
+    blocked: "Kalshi blocked the direct request (CORS). Add your read-only proxy below — the bot still runs on the Coinbase price + 15-min clock meanwhile.",
   }[kalshi.status];
+
+  const inputStyle = { width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 10px", color: C.text, fontSize: 13, fontFamily: "inherit", marginBottom: 8 };
 
   return (
     <div>
@@ -459,7 +489,13 @@ function PaperTrade({ btc }) {
 
       {/* live Kalshi market */}
       <div style={{ background: C.card, border: `1px solid ${kalshi.status === "ok" ? C.cyan + "55" : C.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
-        <div style={{ color: C.cyan, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 }}>LIVE KALSHI MARKET</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ color: C.cyan, fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>LIVE KALSHI MARKET {proxy ? "· via proxy" : ""}</span>
+          <button onClick={() => setShowConnect((v) => !v)} style={{ background: "none", border: `1px solid ${proxy ? C.green + "66" : C.border}`, color: proxy ? C.green : C.sub, fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "4px 9px", cursor: "pointer", fontFamily: "inherit" }}>
+            {proxy ? "✓ Connected" : "Connect"}
+          </button>
+        </div>
+
         {kalshi.status === "ok" ? (
           <div>
             <div style={{ color: C.text, fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{kalshi.market.title}</div>
@@ -470,7 +506,27 @@ function PaperTrade({ btc }) {
             </div>
           </div>
         ) : (
-          <div style={{ color: kalshi.status === "blocked" ? C.amber : C.sub, fontSize: 12, lineHeight: 1.5 }}>{kStatus}</div>
+          <div style={{ color: kalshi.status === "blocked" || kalshi.status === "proxyerr" ? C.amber : C.sub, fontSize: 12, lineHeight: 1.5 }}>{kStatus}</div>
+        )}
+
+        {realBal != null && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <span style={{ color: C.sub, fontSize: 12 }}>Real Kalshi balance · read-only</span>
+            <span style={{ color: C.green, fontSize: 16, fontWeight: 800 }}>{money(realBal / 100)}</span>
+          </div>
+        )}
+
+        {showConnect && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ color: C.dim, fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>
+              Read-only. Deploy <code style={{ color: C.cyan }}>kalshi-proxy/</code> (a Cloudflare Worker) and paste its URL. It can never place orders.
+            </div>
+            <input value={proxy} onChange={(e) => setProxy(e.target.value.trim())} placeholder="https://kalshi-proxy.you.workers.dev" style={inputStyle} />
+            <input value={token} onChange={(e) => setToken(e.target.value.trim())} placeholder="Access token (optional)" style={inputStyle} />
+            {proxy && (
+              <button onClick={() => { setProxy(""); setToken(""); setRealBal(null); }} style={{ background: "none", border: `1px solid ${C.border}`, color: C.red, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "inherit" }}>Disconnect</button>
+            )}
+          </div>
         )}
       </div>
 

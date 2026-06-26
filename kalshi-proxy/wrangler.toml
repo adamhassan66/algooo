@@ -1,0 +1,9 @@
+name = "kalshi-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# No secrets live here. Set them with `wrangler secret put NAME` after deploy:
+#   ACCESS_TOKEN        (recommended) shared token the app must send
+#   KALSHI_KEY_ID       (optional)    only for the /balance endpoint
+#   KALSHI_PRIVATE_KEY  (optional)    only for the /balance endpoint
+#   ALLOW_ORIGIN        (optional)    e.g. https://raw.githack.com to lock CORS

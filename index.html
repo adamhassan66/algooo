@@ -36,6 +36,14 @@
           padding-top:14px; }
   code { background:var(--panel); padding:1px 5px; border-radius:4px; }
   a { color:var(--accent); }
+  .errbox { background:rgba(255,107,107,.12); border:1px solid var(--neg); color:#ffd5d5;
+            border-radius:8px; padding:12px 14px; margin:12px 0; font-size:14px; }
+  .errbox b { color:#fff; }
+  details { margin-top:18px; }
+  summary { color:var(--muted); cursor:pointer; font-size:13px; }
+  pre#debug { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+              padding:10px 12px; font-size:12px; color:var(--muted); overflow:auto;
+              white-space:pre-wrap; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -56,6 +64,7 @@
 </header>
 <main>
   <div class="status" id="status">Click “Scan markets” to fetch live Kalshi data in your browser.</div>
+  <div id="errbox"></div>
   <table id="tbl" hidden>
     <thead><tr>
       <th>Action</th><th>Edge</th><th>Model</th><th>Market</th>
@@ -71,6 +80,10 @@
     market's <i>settlement</i> (which NWS station, what cutoff time) — always verify on Kalshi
     before trading.
   </p>
+  <details open>
+    <summary>Diagnostics (share this if the scan finds nothing)</summary>
+    <pre id="debug">— run a scan to populate —</pre>
+  </details>
 </main>
 <script>
 // ---- forecast math (mirrors kalshi-weather.js) -----------------------------
@@ -129,6 +142,10 @@ const daysUntil = (iso)=>Math.round((new Date(iso)-Date.now())/86400000);
 const KALSHI = 'https://api.elections.kalshi.com/trade-api/v2';
 const $ = (id)=>document.getElementById(id);
 const setStatus = (t)=>{ $('status').textContent = t; };
+let LOG = [];
+const log = (s)=>{ LOG.push(s); $('debug').textContent = LOG.join('\n'); };
+const showError = (html)=>{ $('errbox').innerHTML = '<div class="errbox">'+html+'</div>'; };
+const clearError = ()=>{ $('errbox').innerHTML = ''; };
 
 async function fetchSeriesMarkets(series){
   const out=[]; let cursor='';
@@ -143,6 +160,41 @@ async function fetchSeriesMarkets(series){
   } while(cursor);
   return out;
 }
+
+// Pull weather series straight from Kalshi's catalog so we don't depend on a
+// hardcoded ticker list that can go stale. Returns [{ticker, coords|null}].
+async function discoverWeatherSeries(){
+  for(const cat of ['Climate','Weather']){
+    let r; try{ r = await fetch(`${KALSHI}/series?category=${cat}`, {headers:{Accept:'application/json'}}); }
+    catch(e){ throw e; }                    // network/CORS — let caller handle
+    log(`series?category=${cat} -> HTTP ${r.status}`);
+    if(!r.ok) continue;
+    const all = (await r.json()).series || [];
+    const temp = all.filter(s=>/high|temp/i.test((s.title||'')+(s.ticker||'')));
+    log(`  ${all.length} series in ${cat}, ${temp.length} look like temperature`);
+    if(temp.length) return temp.map(s=>({ticker:s.ticker, coords:coordsFromTitle(s.title)}));
+  }
+  return [];
+}
+function coordsFromTitle(title){
+  const q=(title||'').toLowerCase();
+  for(const k of SERIES_KEYS){ const c=SERIES[k];
+    if(q.includes(c.label.split(' (')[0].toLowerCase())) return c; }
+  return null;
+}
+const geoCache = new Map();
+async function geocode(name){
+  if(!name) return null;
+  if(geoCache.has(name)) return geoCache.get(name);
+  let c=null;
+  try{
+    const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1`);
+    if(r.ok){ const g=(await r.json()).results?.[0];
+      if(g) c={lat:g.latitude,lon:g.longitude,label:g.name}; }
+  }catch{}
+  geoCache.set(name,c); return c;
+}
+const cityFromTitle = (t)=> (t||'').match(/in ([A-Za-z.\s]+?)(?: on| today| tomorrow|\?|$)/i)?.[1]?.trim() || null;
 const fcCache = new Map();
 async function forecastHigh(city,date){
   const key = city.lat+','+city.lon+','+date;
@@ -155,38 +207,89 @@ async function forecastHigh(city,date){
 }
 
 async function scan(){
-  $('run').disabled = true; $('tbl').hidden = true;
+  $('run').disabled = true; $('tbl').hidden = true; clearError();
+  LOG = []; $('debug').textContent = '';
   const minEdge = (+$('minEdge').value||0)/100, bankroll = +$('bankroll').value||0;
+
+  // Step 0: probe. A THROWN fetch here = CORS/offline (no HTTP response at all).
+  // An HTTP status (even 4xx) = we reached Kalshi, so CORS is fine.
+  setStatus('Checking connection to Kalshi…');
   try{
-    setStatus('Fetching open Kalshi temperature markets…');
-    const seen = new Set(), markets = [];
-    for(const series of SERIES_KEYS){
-      let page; try{ page = await fetchSeriesMarkets(series); }
-      catch(e){ throw e; }
-      for(const m of page){ if(m.ticker && !seen.has(m.ticker)){ seen.add(m.ticker); markets.push(m); } }
+    const probe = await fetch(`${KALSHI}/exchange/status`, {headers:{Accept:'application/json'}});
+    log(`probe /exchange/status -> HTTP ${probe.status} (Kalshi is reachable from your browser)`);
+  }catch(e){
+    log('probe THREW: '+e.message+'  -> this is a CORS/network block, not an empty result');
+    setStatus('Blocked before any data loaded.');
+    showError('<b>Kalshi blocked the request from your browser (CORS).</b> Kalshi’s API doesn’t '+
+      'allow direct calls from another website, so a phone browser can’t reach it here. This is '+
+      'not an "empty results" case — no request got through. The fix is a small <b>hosted proxy</b> '+
+      '(or running <code>kalshi-weather.js</code> on a computer). Tell me to set up the proxy and '+
+      'I’ll wire it in.');
+    $('run').disabled=false; return;
+  }
+
+  try{
+    // Step 1: discover weather series (dynamic), fall back to built-in list.
+    setStatus('Finding Kalshi weather series…');
+    let seriesList = [];
+    try{ seriesList = await discoverWeatherSeries(); }
+    catch(e){ log('discovery threw: '+e.message); }
+    if(!seriesList.length){
+      seriesList = SERIES_KEYS.map(k=>({ticker:k, coords:SERIES[k]}));
+      log(`discovery empty -> using ${seriesList.length} built-in series tickers`);
+    } else {
+      log(`discovered ${seriesList.length} temperature series from Kalshi`);
     }
+
+    // Step 2: pull open markets per series (one bad series won't abort the rest).
+    setStatus('Fetching open temperature markets…');
+    const seen = new Set(), markets = [];
+    for(const s of seriesList){
+      try{
+        const page = await fetchSeriesMarkets(s.ticker);
+        if(page.length) log(`${s.ticker}: ${page.length} open market(s)`);
+        for(const m of page){ if(m.ticker && !seen.has(m.ticker)){
+          m.__coords = s.coords; seen.add(m.ticker); markets.push(m); } }
+      }catch(e){ log(`${s.ticker}: ERROR ${e.message}`); }
+    }
+    log(`total open markets gathered: ${markets.length}`);
     setStatus(`Found ${markets.length} open temperature markets. Pricing against forecasts…`);
-    const rows=[];
+
+    // Step 3: price each market against its forecast.
+    const rows=[]; let noStrike=0, noCity=0, badDate=0, noPrice=0, noForecast=0;
     for(const m of markets){
-      const city = cityFor(m), p = parseStrike(m);
-      if(!city||!p) continue;
-      const end=(m.close_time||'').slice(0,10); if(!end) continue;
-      const d=daysUntil(end); if(d<0||d>10) continue;
-      const yes = impliedYes(m); if(yes==null) continue;
-      let hi; try{ hi=await forecastHigh(city,end);}catch{ continue; }
-      if(hi==null) continue;
+      const p = parseStrike(m); if(!p){ noStrike++; continue; }
+      let city = m.__coords || cityFor(m);
+      if(!city){ city = await geocode(cityFromTitle(m.title)); }
+      if(!city){ noCity++; continue; }
+      const end=(m.close_time||'').slice(0,10); if(!end){ badDate++; continue; }
+      const d=daysUntil(end); if(d<0||d>10){ badDate++; continue; }
+      const yes = impliedYes(m); if(yes==null){ noPrice++; continue; }
+      let hi; try{ hi=await forecastHigh(city,end);}catch{ noForecast++; continue; }
+      if(hi==null){ noForecast++; continue; }
       const model=modelProbFor(p,hi,d), e=model-yes, oi=+m.open_interest||0;
       rows.push({title:m.title||m.ticker,ticker:m.ticker,city:city.label,hi,model,yes,e,oi,
         kel:kelly(model,yes),score:Math.abs(e)*Math.sqrt(Math.max(0,oi))});
     }
+    log(`priceable: ${rows.length}  (skipped — noStrike:${noStrike} noCity:${noCity} `+
+        `badDate:${badDate} noPrice:${noPrice} noForecast:${noForecast})`);
+
     const keep = rows.filter(r=>Math.abs(r.e)>=minEdge).sort((a,b)=>b.score-a.score);
     render(keep, bankroll);
-    setStatus(keep.length
-      ? `${keep.length} market(s) with ≥${$('minEdge').value}pp edge (best first).`
-      : `Scanned ${rows.length} priceable markets — none above your edge threshold right now.`);
+    if(keep.length){
+      setStatus(`${keep.length} market(s) with ≥${$('minEdge').value}pp edge (best first).`);
+    } else if(rows.length){
+      setStatus(`Priced ${rows.length} markets, but none exceed your ${$('minEdge').value}pp edge — `+
+        `lower the threshold to see them all.`);
+    } else if(markets.length){
+      setStatus(`Reached Kalshi and found ${markets.length} markets, but none were priceable — see diagnostics.`);
+    } else {
+      setStatus('Reached Kalshi but found 0 open temperature markets — the series tickers may have changed. See diagnostics.');
+    }
   }catch(err){
-    setStatus('Could not load live data: '+err.message+
-      '. Kalshi may block cross-origin browser requests from this host — run kalshi-weather.js (Node) instead, which has no CORS limits.');
+    log('FATAL: '+err.message);
+    setStatus('Error during scan — see diagnostics.');
+    showError('<b>Unexpected error:</b> '+err.message);
   }finally{ $('run').disabled=false; }
 }
 

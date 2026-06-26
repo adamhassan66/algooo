@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Polymarket Weather Edge Finder</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#141925; --line:#222a3a; --txt:#e6e9ef;
+          --muted:#8b95a7; --pos:#3ddc97; --neg:#ff6b6b; --accent:#5b8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--txt); }
+  header { padding:28px 20px 8px; max-width:1040px; margin:0 auto; }
+  h1 { margin:0 0 6px; font-size:24px; }
+  .sub { color:var(--muted); margin:0 0 14px; }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px;
+           padding:10px 16px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  label.inp { color:var(--muted); display:flex; align-items:center; gap:6px; }
+  input[type=number] { width:64px; background:var(--panel); border:1px solid var(--line);
+           color:var(--txt); border-radius:6px; padding:6px 8px; }
+  main { max-width:1040px; margin:0 auto; padding:14px 20px 60px; }
+  .status { color:var(--muted); margin:10px 0; min-height:20px; }
+  table { width:100%; border-collapse:collapse; margin-top:8px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line);
+          font-variant-numeric:tabular-nums; }
+  th { color:var(--muted); font-weight:600; font-size:13px; }
+  td.q { max-width:340px; }
+  .pos { color:var(--pos); } .neg { color:var(--neg); }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
+          font-weight:700; }
+  .pill.buyyes { background:rgba(61,220,151,.15); color:var(--pos); }
+  .pill.buyno  { background:rgba(255,107,107,.15); color:var(--neg); }
+  .note { color:var(--muted); font-size:13px; margin-top:24px; border-top:1px solid var(--line);
+          padding-top:14px; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌦️ Polymarket Weather Edge Finder</h1>
+  <p class="sub">Prices Polymarket weather markets against a free objective forecast model
+     (Open-Meteo / NOAA-ECMWF). Flags where the market disagrees with the forecast.
+     No signal bots. Not financial advice.</p>
+  <div class="bar">
+    <button id="run">Scan markets</button>
+    <label class="inp">Min edge (pp)
+      <input id="minEdge" type="number" value="5" min="0" max="50" step="1" />
+    </label>
+    <label class="inp">Bankroll $
+      <input id="bankroll" type="number" value="1000" min="0" step="100" />
+    </label>
+  </div>
+</header>
+<main>
+  <div class="status" id="status">Click “Scan markets” to fetch live data in your browser.</div>
+  <table id="tbl" hidden>
+    <thead><tr>
+      <th>Action</th><th>Edge</th><th>Model</th><th>Market</th>
+      <th>Fcast hi</th><th>¼-Kelly</th><th>Liq</th><th class="q">Market question</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="note">
+    <b>How it reads:</b> <code>Edge = model probability − market price</code>. Positive edge ⇒
+    the market is too cheap on YES. Forecast uncertainty widens with lead time, so a point
+    forecast is never a sure thing. <b>¼-Kelly</b> is a conservative suggested stake of your
+    bankroll. The biggest real risk is misreading a market's <i>resolution criteria</i> (which
+    weather station, what settlement source) — always verify on Polymarket before trading.
+  </p>
+</main>
+<script>
+// ---- forecast math (mirrors weather-markets.js) ----------------------------
+const erf = (x) => {
+  const s = x < 0 ? -1 : 1, t = 1/(1+0.3275911*Math.abs(x));
+  const y = 1 - (((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t
+    +0.254829592)*t*Math.exp(-x*x);
+  return s*y;
+};
+const ncdf = (z) => 0.5*(1+erf(z/Math.SQRT2));
+const pAbove = (thr,m,sd)=>1-ncdf((thr-m)/sd);
+const pBelow = (thr,m,sd)=>ncdf((thr-m)/sd);
+const pBetween = (lo,hi,m,sd)=>ncdf((hi-m)/sd)-ncdf((lo-m)/sd);
+const forecastSd = (d)=>Math.max(2, Math.round(1.1*Math.max(0,d)*10)/10);
+const kelly = (m,p)=>{ if(p<=0||p>=1) return 0; const b=(1-p)/p;
+  return Math.max(0,(b*m-(1-m))/b); };
+
+const CITIES = {
+  'nyc':{lat:40.78,lon:-73.97,label:'New York'},'new york':{lat:40.78,lon:-73.97,label:'New York'},
+  'la':{lat:33.94,lon:-118.41,label:'Los Angeles'},'los angeles':{lat:33.94,lon:-118.41,label:'Los Angeles'},
+  'chicago':{lat:41.99,lon:-87.91,label:'Chicago'},'london':{lat:51.48,lon:-0.45,label:'London'},
+  'miami':{lat:25.79,lon:-80.32,label:'Miami'},
+};
+const parseTempMarket = (question) => {
+  const q = question.toLowerCase();
+  if(!/temp|degrees|°|fahrenheit|\bhigh\b/.test(q)) return null;
+  let city=null;
+  for(const n of Object.keys(CITIES)){ if(q.includes(n)){ city=CITIES[n]; break; } }
+  if(!city) return null;
+  const bk = q.match(/(\d{2,3})\s*(?:-|to|and)\s*(\d{2,3})/);
+  if(bk) return {city,kind:'between',low:+bk[1],high:+bk[2]};
+  const m = q.match(/(above|over|at least|more than|below|under|less than)\s*(\d{2,3})/);
+  if(m){ const dir=/above|over|at least|more than/.test(m[1])?'above':'below';
+    return {city,kind:dir,threshold:+m[2]}; }
+  return null;
+};
+const modelProbFor = (p,hi,d)=>{ const sd=forecastSd(d);
+  if(p.kind==='above') return pAbove(p.threshold,hi,sd);
+  if(p.kind==='below') return pBelow(p.threshold,hi,sd);
+  return pBetween(p.low,p.high,hi,sd); };
+const daysUntil = (iso)=>Math.round((new Date(iso)-Date.now())/86400000);
+
+// ---- live fetch ------------------------------------------------------------
+const WX = /temperature|temp\b|weather|rain|snow|degrees|fahrenheit|celsius|hottest|coldest|°/i;
+const $ = (id)=>document.getElementById(id);
+const setStatus = (t)=>{ $('status').textContent = t; };
+
+async function fetchMarkets(){
+  const out=[];
+  for(let off=0; off<1500; off+=500){
+    const r = await fetch(`https://gamma-api.polymarket.com/markets?closed=false&limit=500&offset=${off}`);
+    if(!r.ok) throw new Error('Polymarket API '+r.status);
+    const page = await r.json();
+    if(!page.length) break;
+    for(const m of page) if(WX.test(m.question||'')) out.push(m);
+  }
+  return out;
+}
+const fcCache = new Map();
+async function forecastHigh(city,date){
+  const key = city.lat+','+city.lon+','+date;
+  if(fcCache.has(key)) return fcCache.get(key);
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}`+
+    `&daily=temperature_2m_max&temperature_unit=fahrenheit&timezone=auto&start_date=${date}&end_date=${date}`;
+  const r = await fetch(u); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  const v = (await r.json())?.daily?.temperature_2m_max?.[0] ?? null;
+  fcCache.set(key,v); return v;
+}
+
+async function scan(){
+  $('run').disabled = true; $('tbl').hidden = true;
+  const minEdge = (+$('minEdge').value||0)/100, bankroll = +$('bankroll').value||0;
+  try{
+    setStatus('Fetching open weather markets from Polymarket…');
+    const markets = await fetchMarkets();
+    setStatus(`Found ${markets.length} weather markets. Pricing against forecasts…`);
+    const rows=[];
+    for(const m of markets){
+      const p = parseTempMarket(m.question||''); if(!p) continue;
+      const end=(m.endDate||'').slice(0,10); if(!end) continue;
+      const d=daysUntil(end); if(d<0||d>10) continue;
+      let hi; try{ hi=await forecastHigh(p.city,end);}catch{ continue; }
+      if(hi==null) continue;
+      let yes; try{ yes=+JSON.parse(m.outcomePrices)[0]; }catch{ continue; }
+      const model=modelProbFor(p,hi,d), e=model-yes, liq=+m.liquidity||0;
+      rows.push({q:m.question,city:p.city.label,hi,model,yes,e,liq,
+        kel:kelly(model,yes),score:Math.abs(e)*Math.sqrt(Math.max(0,liq))});
+    }
+    const keep = rows.filter(r=>Math.abs(r.e)>=minEdge).sort((a,b)=>b.score-a.score);
+    render(keep, bankroll);
+    setStatus(keep.length
+      ? `${keep.length} market(s) with ≥${($('minEdge').value)}pp edge (best first).`
+      : `Scanned ${rows.length} priceable markets — none above your edge threshold right now.`);
+  }catch(err){
+    setStatus('Could not load live data: '+err.message+
+      '. The API may be blocking cross-origin requests from this host — try opening index.html locally.');
+  }finally{ $('run').disabled=false; }
+}
+
+function render(rows, bankroll){
+  const tb = $('tbl').querySelector('tbody'); tb.innerHTML='';
+  for(const r of rows.slice(0,30)){
+    const buyYes = r.e>0, cls=buyYes?'pos':'neg';
+    const stake = bankroll*0.25*r.kel;
+    const tr=document.createElement('tr');
+    tr.innerHTML =
+      `<td><span class="pill ${buyYes?'buyyes':'buyno'}">${buyYes?'BUY YES':'BUY NO'}</span></td>`+
+      `<td class="${cls}">${(r.e*100>=0?'+':'')}${(r.e*100).toFixed(1)}pp</td>`+
+      `<td>${(r.model*100).toFixed(0)}%</td>`+
+      `<td>${(r.yes*100).toFixed(0)}%</td>`+
+      `<td>${r.hi}°F</td>`+
+      `<td>${(0.25*r.kel*100).toFixed(1)}%${bankroll?` ($${stake.toFixed(0)})`:''}</td>`+
+      `<td>$${Math.round(r.liq).toLocaleString()}</td>`+
+      `<td class="q">${r.q.replace(/</g,'&lt;')}</td>`;
+    tb.appendChild(tr);
+  }
+  $('tbl').hidden = rows.length===0;
+}
+$('run').addEventListener('click', scan);
+</script>
+</body>
+</html>

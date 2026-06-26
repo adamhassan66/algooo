@@ -702,6 +702,85 @@ function Strategy({
 /* ── Parlay reality-checker (baseball "1+ hits" props) ───────────────────── */
 // Typical P(1+ hits in a game) by hitter tier — even stars sit ~70-75%.
 const TIERS = [["Star", 74], ["Regular", 68], ["Platoon", 60]];
+
+// The user's actual Kalshi 25-leg combo, using Kalshi's OWN posted %s where
+// shown on the ticket; the rest (*) are close estimates in the same range.
+const KALSHI_TICKET = [{
+  name: "Trea Turner · 1+ hits",
+  p: 73
+}, {
+  name: "Yordan Álvarez · 1+ hits",
+  p: 70
+}, {
+  name: "Vladimir Guerrero Jr. · 1+ hits*",
+  p: 70
+}, {
+  name: "Steven Kwan · 1+ hits*",
+  p: 70
+}, {
+  name: "Shohei Ohtani · 1+ hits",
+  p: 69
+}, {
+  name: "James Wood · 1+ hits",
+  p: 69
+}, {
+  name: "Freddie Freeman · 1+ hits",
+  p: 68
+}, {
+  name: "Gunnar Henderson · 1+ hits",
+  p: 68
+}, {
+  name: "Ketel Marte · 1+ hits*",
+  p: 68
+}, {
+  name: "Fernando Tatis Jr. · 1+ hits",
+  p: 67
+}, {
+  name: "José Altuve · 1+ hits",
+  p: 67
+}, {
+  name: "Pete Alonso · 1+ hits",
+  p: 67
+}, {
+  name: "Cody Bellinger · 1+ hits",
+  p: 67
+}, {
+  name: "Corbin Carroll · 1+ hits*",
+  p: 67
+}, {
+  name: "Brandon Nimmo · 1+ hits*",
+  p: 66
+}, {
+  name: "Christian Yelich · 1+ hits*",
+  p: 66
+}, {
+  name: "Kyle Schwarber · 1+ hits",
+  p: 64
+}, {
+  name: "Pete Crow-Armstrong · 1+ hits*",
+  p: 64
+}, {
+  name: "Elly De La Cruz · 1+ hits",
+  p: 63
+}, {
+  name: "Juan Soto · 1+ hits",
+  p: 62
+}, {
+  name: "Byron Buxton · 1+ hits*",
+  p: 62
+}, {
+  name: "Nick Kurtz · 1+ hits*",
+  p: 62
+}, {
+  name: "Francisco Lindor · 1+ hits",
+  p: 61
+}, {
+  name: "Manny Machado · 1+ hits",
+  p: 59
+}, {
+  name: "Cal Raleigh · 1+ hits*",
+  p: 58
+}];
 function Parlay() {
   const [legs, setLegs] = usePersist("kc_parlay", [{
     id: 1,
@@ -740,6 +819,20 @@ function Parlay() {
     ...x,
     name
   } : x));
+  const loadTicket = () => setLegs(KALSHI_TICKET.map((x, i) => ({
+    id: i + 1,
+    ...x
+  })));
+  // keep the k highest-probability legs
+  const trimTo = k => setLegs(l => [...l].sort((a, b) => b.p - a.p).slice(0, k).map((x, i) => ({
+    ...x,
+    id: i + 1
+  })));
+
+  // trade-off ladder: combined % if you keep only the top-k legs by probability
+  const sortedP = [...probs].sort((a, b) => b - a);
+  const topKPct = k => sortedP.slice(0, k).reduce((a, p) => a * p, 1) * 100;
+  const ladderKs = [1, 2, 3, 5, 10, 15, 25].filter(k => k <= legs.length);
   const tone = combined >= target ? C.green : combined >= target * 0.6 ? C.amber : C.red;
   const inputStyle = {
     background: C.bg,
@@ -750,6 +843,8 @@ function Parlay() {
     fontSize: 13,
     fontFamily: "inherit"
   };
+  // adaptive precision so tiny combined odds don't collapse to "0.0%"
+  const fmtPct = p => p <= 0 ? "0%" : p >= 10 ? p.toFixed(0) + "%" : p >= 1 ? p.toFixed(1) + "%" : +p.toPrecision(2) + "%";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       background: C.card,
@@ -778,7 +873,7 @@ function Parlay() {
       fontWeight: 900,
       fontVariantNumeric: "tabular-nums"
     }
-  }, combined.toFixed(1), "%")), /*#__PURE__*/React.createElement("div", {
+  }, fmtPct(combined))), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 8,
       background: C.dim,
@@ -820,7 +915,107 @@ function Parlay() {
     style: {
       color: C.text
     }
-  }, fairOdds.toFixed(2), "×"), " your stake. Each leg you add multiplies this chance ", /*#__PURE__*/React.createElement("i", null, "down"), " — a parlay is the opposite of a sure thing.")), /*#__PURE__*/React.createElement("div", {
+  }, fairOdds.toFixed(2), "×"), " your stake. Each leg you add multiplies this chance ", /*#__PURE__*/React.createElement("i", null, "down"), " — a parlay is the opposite of a sure thing."), /*#__PURE__*/React.createElement("button", {
+    onClick: loadTicket,
+    style: {
+      width: "100%",
+      marginTop: 12,
+      padding: 11,
+      borderRadius: 10,
+      border: `1px solid ${C.cyan}55`,
+      background: C.cyan + "12",
+      color: C.cyan,
+      fontSize: 13,
+      fontWeight: 700,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "↻ Load my Kalshi 25-leg ticket")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.sub,
+      fontSize: 11,
+      fontWeight: 800,
+      letterSpacing: 0.5,
+      marginBottom: 4
+    }
+  }, "📉 TRIM LADDER · keep your best legs"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      marginBottom: 10
+    }
+  }, "Combined chance if you keep only the highest-% legs. Tap to trim."), ladderKs.map(k => {
+    const pct = topKPct(k);
+    const col = pct >= 50 ? C.green : pct >= 20 ? C.amber : C.red;
+    return /*#__PURE__*/React.createElement("div", {
+      key: k,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 58,
+        color: C.sub,
+        fontSize: 12,
+        fontWeight: 700
+      }
+    }, k, " leg", k > 1 ? "s" : ""), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        height: 8,
+        background: C.bg,
+        borderRadius: 4,
+        overflow: "hidden"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: "100%",
+        width: `${Math.min(100, pct)}%`,
+        background: col,
+        borderRadius: 4
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 52,
+        textAlign: "right",
+        color: col,
+        fontSize: 13,
+        fontWeight: 800,
+        fontVariantNumeric: "tabular-nums"
+      }
+    }, fmtPct(pct)), /*#__PURE__*/React.createElement("button", {
+      onClick: () => trimTo(k),
+      style: {
+        background: C.lift,
+        border: `1px solid ${C.border}`,
+        color: C.text,
+        fontSize: 11,
+        fontWeight: 700,
+        borderRadius: 8,
+        padding: "5px 10px",
+        cursor: "pointer",
+        fontFamily: "inherit"
+      }
+    }, "Keep"));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.dim,
+      fontSize: 11,
+      lineHeight: 1.5,
+      marginTop: 8
+    }
+  }, "Your 25-leg ticket: ≈0.1% (Kalshi's $0.97→$909 ≈ 1 in 940). Two best legs: ~50%. That gap is the whole game.")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: combined >= target ? C.green + "12" : C.amber + "10",
       border: `1px solid ${combined >= target ? C.green : C.amber}44`,
@@ -864,7 +1059,7 @@ function Parlay() {
       fontSize: 13,
       lineHeight: 1.55
     }
-  }, combined >= target ? `This combo clears your ${target}% bar.` : `This combo is ${combined.toFixed(1)}% — below your ${target}% bar.`, " ", "At your average leg (~", (avgP * 100).toFixed(0), "%), the most legs you can stack and still stay ≥", target, "% is", " ", /*#__PURE__*/React.createElement("b", {
+  }, combined >= target ? `This combo clears your ${target}% bar.` : `This combo is ${fmtPct(combined)} — below your ${target}% bar.`, " ", "At your average leg (~", (avgP * 100).toFixed(0), "%), the most legs you can stack and still stay ≥", target, "% is", " ", /*#__PURE__*/React.createElement("b", {
     style: {
       color: maxLegs >= legs.length ? C.green : C.red
     }

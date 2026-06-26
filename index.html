@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Polymarket Weather Edge Finder</title>
+<title>Kalshi Weather Edge Finder</title>
 <style>
   :root { --bg:#0b0e14; --panel:#141925; --line:#222a3a; --txt:#e6e9ef;
-          --muted:#8b95a7; --pos:#3ddc97; --neg:#ff6b6b; --accent:#5b8cff; }
+          --muted:#8b95a7; --pos:#3ddc97; --neg:#ff6b6b; --accent:#00b48a; }
   * { box-sizing: border-box; }
   body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
          background:var(--bg); color:var(--txt); }
@@ -14,8 +14,8 @@
   h1 { margin:0 0 6px; font-size:24px; }
   .sub { color:var(--muted); margin:0 0 14px; }
   .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  button { background:var(--accent); color:#fff; border:0; border-radius:8px;
-           padding:10px 16px; font-weight:600; cursor:pointer; }
+  button { background:var(--accent); color:#04130d; border:0; border-radius:8px;
+           padding:10px 16px; font-weight:700; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
   label.inp { color:var(--muted); display:flex; align-items:center; gap:6px; }
   input[type=number] { width:64px; background:var(--panel); border:1px solid var(--line);
@@ -26,7 +26,7 @@
   th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line);
           font-variant-numeric:tabular-nums; }
   th { color:var(--muted); font-weight:600; font-size:13px; }
-  td.q { max-width:340px; }
+  td.q { max-width:320px; }
   .pos { color:var(--pos); } .neg { color:var(--neg); }
   .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
           font-weight:700; }
@@ -40,10 +40,10 @@
 </head>
 <body>
 <header>
-  <h1>🌦️ Polymarket Weather Edge Finder</h1>
-  <p class="sub">Prices Polymarket weather markets against a free objective forecast model
-     (Open-Meteo / NOAA-ECMWF). Flags where the market disagrees with the forecast.
-     No signal bots. Not financial advice.</p>
+  <h1>🌦️ Kalshi Weather Edge Finder</h1>
+  <p class="sub">Prices Kalshi temperature markets against a free objective forecast model
+     (Open-Meteo / NOAA-ECMWF) using each market's structured strike fields. Flags where
+     the market disagrees with the forecast. No signal bots. Not financial advice.</p>
   <div class="bar">
     <button id="run">Scan markets</button>
     <label class="inp">Min edge (pp)
@@ -55,11 +55,11 @@
   </div>
 </header>
 <main>
-  <div class="status" id="status">Click “Scan markets” to fetch live data in your browser.</div>
+  <div class="status" id="status">Click “Scan markets” to fetch live Kalshi data in your browser.</div>
   <table id="tbl" hidden>
     <thead><tr>
       <th>Action</th><th>Edge</th><th>Model</th><th>Market</th>
-      <th>Fcast hi</th><th>¼-Kelly</th><th>Liq</th><th class="q">Market question</th>
+      <th>Fcast hi</th><th>¼-Kelly</th><th>OI</th><th class="q">Kalshi market</th>
     </tr></thead>
     <tbody></tbody>
   </table>
@@ -67,12 +67,13 @@
     <b>How it reads:</b> <code>Edge = model probability − market price</code>. Positive edge ⇒
     the market is too cheap on YES. Forecast uncertainty widens with lead time, so a point
     forecast is never a sure thing. <b>¼-Kelly</b> is a conservative suggested stake of your
-    bankroll. The biggest real risk is misreading a market's <i>resolution criteria</i> (which
-    weather station, what settlement source) — always verify on Polymarket before trading.
+    bankroll; <b>OI</b> is Kalshi open interest (depth). The biggest real risk is misreading a
+    market's <i>settlement</i> (which NWS station, what cutoff time) — always verify on Kalshi
+    before trading.
   </p>
 </main>
 <script>
-// ---- forecast math (mirrors weather-markets.js) ----------------------------
+// ---- forecast math (mirrors kalshi-weather.js) -----------------------------
 const erf = (x) => {
   const s = x < 0 ? -1 : 1, t = 1/(1+0.3275911*Math.abs(x));
   const y = 1 - (((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t
@@ -87,25 +88,37 @@ const forecastSd = (d)=>Math.max(2, Math.round(1.1*Math.max(0,d)*10)/10);
 const kelly = (m,p)=>{ if(p<=0||p>=1) return 0; const b=(1-p)/p;
   return Math.max(0,(b*m-(1-m))/b); };
 
-const CITIES = {
-  'nyc':{lat:40.78,lon:-73.97,label:'New York'},'new york':{lat:40.78,lon:-73.97,label:'New York'},
-  'la':{lat:33.94,lon:-118.41,label:'Los Angeles'},'los angeles':{lat:33.94,lon:-118.41,label:'Los Angeles'},
-  'chicago':{lat:41.99,lon:-87.91,label:'Chicago'},'london':{lat:51.48,lon:-0.45,label:'London'},
-  'miami':{lat:25.79,lon:-80.32,label:'Miami'},
+// ---- Kalshi temperature series -> NWS station coords -----------------------
+const SERIES = {
+  HIGHNY:{lat:40.78,lon:-73.97,label:'New York (Central Park)'},
+  KXHIGHNY:{lat:40.78,lon:-73.97,label:'New York (Central Park)'},
+  HIGHLAX:{lat:33.94,lon:-118.41,label:'Los Angeles (LAX)'},
+  KXHIGHLAX:{lat:33.94,lon:-118.41,label:'Los Angeles (LAX)'},
+  HIGHCHI:{lat:41.99,lon:-87.91,label:'Chicago (O\'Hare)'},
+  KXHIGHCHI:{lat:41.99,lon:-87.91,label:'Chicago (O\'Hare)'},
+  HIGHMIA:{lat:25.79,lon:-80.32,label:'Miami'},
+  KXHIGHMIA:{lat:25.79,lon:-80.32,label:'Miami'},
+  HIGHAUS:{lat:30.19,lon:-97.67,label:'Austin (AUS)'},
+  KXHIGHAUS:{lat:30.19,lon:-97.67,label:'Austin (AUS)'},
+  HIGHDEN:{lat:39.85,lon:-104.67,label:'Denver (DEN)'},
+  KXHIGHDEN:{lat:39.85,lon:-104.67,label:'Denver (DEN)'},
+  HIGHPHIL:{lat:39.87,lon:-75.24,label:'Philadelphia (PHL)'},
+  KXHIGHPHIL:{lat:39.87,lon:-75.24,label:'Philadelphia (PHL)'},
 };
-const parseTempMarket = (question) => {
-  const q = question.toLowerCase();
-  if(!/temp|degrees|°|fahrenheit|\bhigh\b/.test(q)) return null;
-  let city=null;
-  for(const n of Object.keys(CITIES)){ if(q.includes(n)){ city=CITIES[n]; break; } }
-  if(!city) return null;
-  const bk = q.match(/(\d{2,3})\s*(?:-|to|and)\s*(\d{2,3})/);
-  if(bk) return {city,kind:'between',low:+bk[1],high:+bk[2]};
-  const m = q.match(/(above|over|at least|more than|below|under|less than)\s*(\d{2,3})/);
-  if(m){ const dir=/above|over|at least|more than/.test(m[1])?'above':'below';
-    return {city,kind:dir,threshold:+m[2]}; }
-  return null;
-};
+const SERIES_KEYS = Object.keys(SERIES).sort((a,b)=>b.length-a.length);
+const cityFor = (m)=>{ const tk=(m.event_ticker||m.ticker||'').toUpperCase();
+  for(const k of SERIES_KEYS) if(tk.startsWith(k)) return SERIES[k]; return null; };
+
+const parseStrike = (m)=>{ const t=(m.strike_type||'').toLowerCase();
+  if(t==='greater'||t==='greater_or_equal') return {kind:'above',threshold:m.floor_strike};
+  if(t==='less'||t==='less_or_equal') return {kind:'below',threshold:m.cap_strike};
+  if(t==='between') return {kind:'between',low:m.floor_strike,high:m.cap_strike};
+  if(m.floor_strike!=null&&m.cap_strike!=null) return {kind:'between',low:m.floor_strike,high:m.cap_strike};
+  if(m.floor_strike!=null) return {kind:'above',threshold:m.floor_strike};
+  if(m.cap_strike!=null) return {kind:'below',threshold:m.cap_strike};
+  return null; };
+const impliedYes = (m)=>{ const bid=+m.yes_bid||0, ask=+m.yes_ask||0;
+  if(bid>0&&ask>0) return (bid+ask)/200; if(+m.last_price>0) return +m.last_price/100; return null; };
 const modelProbFor = (p,hi,d)=>{ const sd=forecastSd(d);
   if(p.kind==='above') return pAbove(p.threshold,hi,sd);
   if(p.kind==='below') return pBelow(p.threshold,hi,sd);
@@ -113,19 +126,21 @@ const modelProbFor = (p,hi,d)=>{ const sd=forecastSd(d);
 const daysUntil = (iso)=>Math.round((new Date(iso)-Date.now())/86400000);
 
 // ---- live fetch ------------------------------------------------------------
-const WX = /temperature|temp\b|weather|rain|snow|degrees|fahrenheit|celsius|hottest|coldest|°/i;
+const KALSHI = 'https://api.elections.kalshi.com/trade-api/v2';
 const $ = (id)=>document.getElementById(id);
 const setStatus = (t)=>{ $('status').textContent = t; };
 
-async function fetchMarkets(){
-  const out=[];
-  for(let off=0; off<1500; off+=500){
-    const r = await fetch(`https://gamma-api.polymarket.com/markets?closed=false&limit=500&offset=${off}`);
-    if(!r.ok) throw new Error('Polymarket API '+r.status);
-    const page = await r.json();
-    if(!page.length) break;
-    for(const m of page) if(WX.test(m.question||'')) out.push(m);
-  }
+async function fetchSeriesMarkets(series){
+  const out=[]; let cursor='';
+  do{
+    const url = `${KALSHI}/markets?series_ticker=${series}&status=open&limit=200`+(cursor?`&cursor=${cursor}`:'');
+    const r = await fetch(url, {headers:{Accept:'application/json'}});
+    if(r.status===404) return out;
+    if(!r.ok) throw new Error('Kalshi '+r.status);
+    const j = await r.json();
+    out.push(...(j.markets||[]));
+    cursor = j.cursor||'';
+  } while(cursor);
   return out;
 }
 const fcCache = new Map();
@@ -143,29 +158,35 @@ async function scan(){
   $('run').disabled = true; $('tbl').hidden = true;
   const minEdge = (+$('minEdge').value||0)/100, bankroll = +$('bankroll').value||0;
   try{
-    setStatus('Fetching open weather markets from Polymarket…');
-    const markets = await fetchMarkets();
-    setStatus(`Found ${markets.length} weather markets. Pricing against forecasts…`);
+    setStatus('Fetching open Kalshi temperature markets…');
+    const seen = new Set(), markets = [];
+    for(const series of SERIES_KEYS){
+      let page; try{ page = await fetchSeriesMarkets(series); }
+      catch(e){ throw e; }
+      for(const m of page){ if(m.ticker && !seen.has(m.ticker)){ seen.add(m.ticker); markets.push(m); } }
+    }
+    setStatus(`Found ${markets.length} open temperature markets. Pricing against forecasts…`);
     const rows=[];
     for(const m of markets){
-      const p = parseTempMarket(m.question||''); if(!p) continue;
-      const end=(m.endDate||'').slice(0,10); if(!end) continue;
+      const city = cityFor(m), p = parseStrike(m);
+      if(!city||!p) continue;
+      const end=(m.close_time||'').slice(0,10); if(!end) continue;
       const d=daysUntil(end); if(d<0||d>10) continue;
-      let hi; try{ hi=await forecastHigh(p.city,end);}catch{ continue; }
+      const yes = impliedYes(m); if(yes==null) continue;
+      let hi; try{ hi=await forecastHigh(city,end);}catch{ continue; }
       if(hi==null) continue;
-      let yes; try{ yes=+JSON.parse(m.outcomePrices)[0]; }catch{ continue; }
-      const model=modelProbFor(p,hi,d), e=model-yes, liq=+m.liquidity||0;
-      rows.push({q:m.question,city:p.city.label,hi,model,yes,e,liq,
-        kel:kelly(model,yes),score:Math.abs(e)*Math.sqrt(Math.max(0,liq))});
+      const model=modelProbFor(p,hi,d), e=model-yes, oi=+m.open_interest||0;
+      rows.push({title:m.title||m.ticker,ticker:m.ticker,city:city.label,hi,model,yes,e,oi,
+        kel:kelly(model,yes),score:Math.abs(e)*Math.sqrt(Math.max(0,oi))});
     }
     const keep = rows.filter(r=>Math.abs(r.e)>=minEdge).sort((a,b)=>b.score-a.score);
     render(keep, bankroll);
     setStatus(keep.length
-      ? `${keep.length} market(s) with ≥${($('minEdge').value)}pp edge (best first).`
+      ? `${keep.length} market(s) with ≥${$('minEdge').value}pp edge (best first).`
       : `Scanned ${rows.length} priceable markets — none above your edge threshold right now.`);
   }catch(err){
     setStatus('Could not load live data: '+err.message+
-      '. The API may be blocking cross-origin requests from this host — try opening index.html locally.');
+      '. Kalshi may block cross-origin browser requests from this host — run kalshi-weather.js (Node) instead, which has no CORS limits.');
   }finally{ $('run').disabled=false; }
 }
 
@@ -179,11 +200,11 @@ function render(rows, bankroll){
       `<td><span class="pill ${buyYes?'buyyes':'buyno'}">${buyYes?'BUY YES':'BUY NO'}</span></td>`+
       `<td class="${cls}">${(r.e*100>=0?'+':'')}${(r.e*100).toFixed(1)}pp</td>`+
       `<td>${(r.model*100).toFixed(0)}%</td>`+
-      `<td>${(r.yes*100).toFixed(0)}%</td>`+
+      `<td>${(r.yes*100).toFixed(0)}c</td>`+
       `<td>${r.hi}°F</td>`+
       `<td>${(0.25*r.kel*100).toFixed(1)}%${bankroll?` ($${stake.toFixed(0)})`:''}</td>`+
-      `<td>$${Math.round(r.liq).toLocaleString()}</td>`+
-      `<td class="q">${r.q.replace(/</g,'&lt;')}</td>`;
+      `<td>${r.oi.toLocaleString()}</td>`+
+      `<td class="q">${(r.title).replace(/</g,'&lt;')}</td>`;
     tb.appendChild(tr);
   }
   $('tbl').hidden = rows.length===0;
